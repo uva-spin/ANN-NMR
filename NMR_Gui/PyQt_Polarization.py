@@ -41,22 +41,22 @@ class Config():
 
     def __init__(self, params, k_range, f_input, scansize, ranger, backgmd, backreal, current):
 
-        circ_consts = (3*10**(-8),0.35,619,50,10,0.0343,4.752*10**(-9),50,1.027*10**(-10),2.542*10**(-7),0,0,0,0)
+        self.circ_consts = (3*10**(-8),0.35,619,50,10,0.0343,4.752*10**(-9),50,1.027*10**(-10),2.542*10**(-7),0,0,0,0)
 
-        self.L0 = circ_consts[0]
-        self.Rcoil = circ_consts[1]
-        self.R = circ_consts[2]
-        self.R1 = circ_consts[3]
-        self.r = circ_consts[4]
-        self.alpha = circ_consts[5]
-        self.beta1 = circ_consts[6]
-        self.Z_cable = circ_consts[7]
-        self.D = circ_consts[8]
-        self.M = circ_consts[9]
-        self.delta_C = circ_consts[10]
-        self.delta_phi = circ_consts[11]
-        self.delta_phase = circ_consts[12]
-        self.delta_l = circ_consts[13]
+        self.L0 = self.circ_consts[0]
+        self.Rcoil = self.circ_consts[1]
+        self.R = self.circ_consts[2]
+        self.R1 = self.circ_consts[3]
+        self.r = self.circ_consts[4]
+        self.alpha = self.circ_consts[5]
+        self.beta1 = self.circ_consts[6]
+        self.Z_cable = self.circ_consts[7]
+        self.D = self.circ_consts[8]
+        self.M = self.circ_consts[9]
+        self.delta_C = self.circ_consts[10]
+        self.delta_phi = self.circ_consts[11]
+        self.delta_phase = self.circ_consts[12]
+        self.delta_l = self.circ_consts[13]
 
         self.f = f_input
     
@@ -75,9 +75,11 @@ class Config():
         self.k_range = k_range
         self.rangesize = ranger
 
-        self.main_sig = backreal
+        # self.main_sig = main_sig
+        # self.deriv_sig = deriv_sig
         self.current_sig = current
         self.backgmd_sig = backgmd
+        self.backreal_sig = backreal
 
         # pi = np.pi
         # im_unit = complex(0,1)
@@ -93,8 +95,8 @@ class Config():
 
 class Simulate():
 
-    def __init__(self,config):
-        self.Inputs = config()
+    def __init__(self,configuration):
+        self.Inputs = configuration
 
     def LabviewCalculateXArray(self):
         
@@ -139,7 +141,7 @@ class Simulate():
             output.append((func(input)).real)
         return output
     
-    def LabviewCalculateYArray(self):
+    def LabviewCalculateYArray(self, main_sig):
         
         #---------------------preamble----------------
         
@@ -163,6 +165,8 @@ class Simulate():
         delta_phi = self.Inputs.delta_phi
         delta_phase = self.Inputs.delta_phase
         delta_l = self.Inputs.delta_l
+
+        self.circ_consts = ()
         
         
         f = self.Inputs.f
@@ -174,9 +178,11 @@ class Simulate():
         phi_const = self.Inputs.phi_const
         Cstray = self.Inputs.Cstray
 
-        backreal_sig = self.Inputs.main_sig
+        backreal_sig = self.Inputs.backreal_sig
         current_sig = self.Inputs.current_sig
         backgmd_sig = self.Inputs.backgmd_sig
+        # main_sig = self.Inputs.main_sig
+        # deriv_sig = self.Inputs.deriv_sig
         
         I = U*1000/R #Ideal constant current, mA
 
@@ -257,10 +263,10 @@ class Simulate():
         vreal = []    
         Icoil = []
         
-        # for item in deriv_sig:
-        #     butxi.append(item)
-        # for item in main_sig:
-        #     butxii.append(item)
+        for item in main_sig:
+            butxi.append(item)
+        for item in main_sig:
+            butxii.append(item)
         for item in backgmd_sig:
             vback.append(item)
         for item in backreal_sig:
@@ -350,7 +356,68 @@ class Simulate():
         w_range = w_high - w_low
         larger_range = (delta_w*larger_x)+(w_low-5*w_range)
         
-        out_y = Simulate.getArrayFromFunc(V_out,x)
+        out_y = Simulate.getArrayFromFunc(self,V_out,x)
         if (self.Inputs.rangesize == 1):
-            out_y = Simulate.getArrayFromFunc(V_out,larger_range)
+            out_y = Simulate.getArrayFromFunc(self,V_out,larger_range)
         return out_y
+    
+    def cosal(self,x,eps):
+        return (1-eps*x-self.Inputs.s)/Simulate.bigxsquare(self,x,eps)
+
+
+    def c(self,x):
+        return ((self.Inputs.g**2+(1-x-self.Inputs.s)**2)**0.5)**0.5
+
+
+    def bigxsquare(self,x,eps):
+        return (self.Inputs.g**2+(1-eps*x-self.Inputs.s)**2)**0.5
+
+
+    def mult_term(self,x,eps):
+        return float(1)/(2*np.pi*np.sqrt(Simulate.bigxsquare(self,x,eps)))
+
+
+    def cosaltwo(self,x,eps):
+        return ((1+Simulate.cosal(self,x,eps))/2)**0.5
+
+
+    def sinaltwo(self,x,eps):
+        return ((1-Simulate.cosal(self,x,eps))/2)**0.5
+
+
+    def termone(self,x,eps):
+        return np.pi/2+np.arctan((self.Inputs.bigy**2-Simulate.bigxsquare(self,x,eps))/((2*self.Inputs.bigy*(Simulate.bigxsquare(self,x,eps))**0.5)*Simulate.sinaltwo(self,x,eps)))
+
+
+    def termtwo(self,x,eps):
+        return np.log((self.Inputs.bigy**2+Simulate.bigxsquare(self,x,eps)+2*self.Inputs.bigy*(Simulate.bigxsquare(self,x,eps)**0.5)*Simulate.cosaltwo(self,x,eps))/(self.Inputs.bigy**2+Simulate.bigxsquare(self,x,eps)-2*self.Inputs.bigy*(Simulate.bigxsquare(self,x,eps)**0.5)*Simulate.cosaltwo(self,x,eps)))
+
+    def icurve(self,x,eps):
+        return Simulate.mult_term(self,x,eps)*(2*Simulate.cosaltwo(self,x,eps)*Simulate.termone(self,x,eps)+Simulate.sinaltwo(self,x,eps)*Simulate.termtwo(self,x,eps))
+    
+    def Lineshape(self,P, circ_params, function_input, scan_s, deriv_signal, Backgmd, Backreal,Current, ranger):
+        xvals = np.linspace(-6,6,500)
+        yvals = Simulate.icurve(self,xvals,1)/10
+        yvals2 = Simulate.icurve(self,-xvals,1)/10
+
+        center = 250
+        length = range(500)
+        norm_array = []
+        for x in length:
+            norm_array = np.append(norm_array,(x - center)*(12/500))  
+        Iplus = Simulate.icurve(self,norm_array,1)
+        Iminus = Simulate.icurve(self,norm_array,-1)
+        ratio = Iminus/Iplus
+        r = (np.sqrt(4-3*P**(2))+P)/(2-2*P)
+        Iminus = Simulate.icurve(self,norm_array,-1)
+        array = r*Iminus
+        array_flipped = np.flip(array)
+        element_1 = array_flipped+Iminus
+        sum_array = np.sum(array_flipped)*(12/500)
+        element_2 = 1/sum_array
+        element_3 = P
+        signal = element_1*element_2*element_3
+        lineshape = Simulate.LabviewCalculateYArray(self,signal)
+        offset = [x - max(lineshape) for x in lineshape]
+        offset = np.array(offset)
+        return offset
