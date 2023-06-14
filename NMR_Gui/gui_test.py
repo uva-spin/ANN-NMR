@@ -1,4 +1,5 @@
-from PyQt5 import QtWidgets, QtCore
+from PyQt5 import QtWidgets, QtCore, QtGui
+from PyQt5 import uic
 from pyqtgraph import PlotWidget, plot
 import pyqtgraph as pg
 import sys  # We need sys so that we can pass argv to QApplication
@@ -6,6 +7,7 @@ import os
 from random import randint
 from PyQt_Polarization import *
 from matplotlib.figure import Figure
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 
 ###Circuit Parameters###
 U = 0.1
@@ -25,7 +27,7 @@ Backreal = np.loadtxt(r'C:\Work\ANN\ANN-NMR\NMR_Gui\Backreal.dat', unpack = True
 Current = np.loadtxt(r'C:\Work\ANN\ANN-NMR\NMR_Gui\New_Current.csv', unpack = True)
 
 
-class MplCanvas(FigureCavnas):
+class MplCanvas(FigureCanvas):
     def __init__(self, parent=None, width = 5, height=4, dpi=100):
         fig = Figure(figsize = (width,height),dpi=dpi)
         self.axes = fig.add_subplot(111)
@@ -36,9 +38,23 @@ class MainWindow(QtWidgets.QMainWindow):
     def __init__(self, *args, **kwargs):
         # fig = matplotlib.figure.Figure(figsize=(*args,*args), **kwargs)
         super(MainWindow, self).__init__(*args, **kwargs)
-
+        self.ui = uic.loadUi('gui.ui',self)
+        self.resize(888,600)
+        icon = QtGui.QIcon()
+        icon.addPixmap(QtGui.QPixmap("PyShine.png"), QtGui.QIcon.Normal, QtGui.QIcon.Off)
         self.graphWidget = pg.PlotWidget()
         self.setCentralWidget(self.graphWidget)
+        self.threadpool = QtCore.QThreadPool()
+
+        self.canvas = MplCanvas(self, width = 5, height = 4, dpi = 100)
+        self.ui.gridLayout.addWidget(self.canvas,2,1,1,1)
+        self.reference_plot = None    
+        # self.q = queue.Queue(maxsize=20)  
+        self.timer = QtCore.QTimer()
+        self.timer.setInterval(self.interval)
+        self.timer.timeout.connect(self.update_plot)
+        self.timer.start()
+          
 
         self.Inputs = Simulate(Config(circ_params,k_range,function_input,scan_s, ranger, Backgmd, Backreal, Current))
 
