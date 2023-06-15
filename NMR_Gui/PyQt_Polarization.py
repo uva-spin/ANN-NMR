@@ -420,4 +420,8 @@ class Simulate():
         lineshape = Simulate.LabviewCalculateYArray(self,signal)
         offset = [x - max(lineshape) for x in lineshape]
         offset = np.array(offset)
-        return offset
+        noisey = max(list(map(abs, offset)))/2.5
+        fluc = noisey*.1
+        noise = np.random.normal(noisey,fluc,500)
+        sig = offset + noise
+        return sig
