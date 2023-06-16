@@ -1,13 +1,17 @@
 import dearpygui.dearpygui as dpg
-import math
+from math import *
 import time
 import threading
+import pandas as pd
+import numpy as np
 from PyQt_Polarization import *
+# import tensorflow as tf
+# from tensorflow import keras
+# from tensorflow.keras.models import load_model
 
 ###Circuit Parameters###
 P = .5
 U = 0.1
-# Cknob = 0.125
 Cknob = 0.016
 cable = 2.5
 eta = 0.0104
@@ -22,22 +26,23 @@ Backgmd = np.loadtxt(r'C:\Work\ANN\ANN-NMR\NMR_Gui\Backgmd.dat', unpack = True)
 Backreal = np.loadtxt(r'C:\Work\ANN\ANN-NMR\NMR_Gui\Backreal.dat', unpack = True)
 Current = np.loadtxt(r'C:\Work\ANN\ANN-NMR\NMR_Gui\New_Current.csv', unpack = True)
 
+testmodel = tf.keras.models.load_model(r'C:\Users\Devin\Desktop\Spin Physics Work\Deuteron\trained_model_1M_v5.h5')
+
 nsamples = 500
 
 global data_y
 global data_x
-# Can use collections if you only need the last 100 samples
-# data_y = collections.deque([0.0, 0.0],maxlen=nsamples)
-# data_x = collections.deque([0.0, 0.0],maxlen=nsamples)
 
-# Use a list if you need all the data. 
-# Empty list of nsamples should exist at the beginning.
-# Theres a cleaner way to do this probably.
 data_y = [0.0] * nsamples
 data_x = [0.0] * nsamples
 
+sindatax = []
+sindatay = []
+for i in range(0, 500):
+    sindatax.append(i / 1000)
+    sindatay.append(0.5 + 0.5 * sin(50 * i / 1000))
+
 class Parameters():
-        # Cknob = 0.125
     P = P
     U = U
     Cknob = Cknob
@@ -52,72 +57,77 @@ class Parameters():
     ranger = ranger
 
 def Update_Parameters_Callback(sender, value):
+    setattr(Parameters, sender, value)
+    dpg.set_value(sender, value)
 
-    Parameters.P = value
-
-    dpg.set_value(sender, Parameters.P)
+    # dpg.set_value(sender, Parameters.value)
 
 def update_data():
-    Inputs = Simulate(Config(circ_params,k_range,function_input,scan_s, ranger, Backgmd, Backreal, Current))
+    # Inputs = Simulate(Config(Parameters.circ_params,Parameters.k_range,Parameters.function_input,Parameters.scan_s, Parameters.ranger, Backgmd, Backreal, Current))
     while True:
+        Inputs = Simulate(Config(Parameters.circ_params,Parameters.k_range,Parameters.function_input,Parameters.scan_s, Parameters.ranger, Backgmd, Backreal, Current))
 
-        data_x = Inputs.LabviewCalculateXArray()
-        data_y = Inputs.Lineshape(Parameters.P,Parameters.circ_params,Parameters.k_range,Parameters.function_input,Parameters.scan_s, Backgmd, Backreal, Current, Parameters.ranger)
+
+        data_x = Inputs.LabviewCalculateXArray((Parameters.U,Parameters.Cknob,Parameters.cable,Parameters.eta,Parameters.phi,Parameters.Cstray),Parameters.scan_s,Parameters.k_range,Parameters.ranger,Parameters.function_input)
+        data_y = Inputs.Lineshape(Parameters.P,(Parameters.U,Parameters.Cknob,Parameters.cable,Parameters.eta,Parameters.phi,Parameters.Cstray),Parameters.function_input,Parameters.scan_s, Parameters.ranger,Parameters.k_range)
+
         
-        #set the series x and y to the last nsamples
-        dpg.set_value('series_tag', [list(data_x), list(data_y)])          
+        prediction = Predict(data_y, Parameters.P, testmodel)
+
+        data_y_pred =Inputs.Lineshape(prediction,(Parameters.U,Parameters.Cknob,Parameters.cable,Parameters.eta,Parameters.phi,Parameters.Cstray),Parameters.function_input,Parameters.scan_s, Parameters.ranger,Parameters.k_range)\
+        
+        dpg.set_value('series_tag', [list(data_x), list(data_y)])    
+        dpg.set_value('series_tag2', [list(data_x), list(data_y_pred)])        
         dpg.fit_axis_data('x_axis')
         dpg.fit_axis_data('y_axis')
+        dpg.fit_axis_data('x_axis2')
+        dpg.fit_axis_data('y_axis2')
+        # dpg.fit_axis_data('y_axis2')
         
         # time.sleep(13/200)
-        # sample=sample+1
            
 
 
 dpg.create_context()
 with dpg.window(label='NMR Simulation', tag='win',width=800, height=600):
-    # P = dpg.add_input_float(label="P")
-    # U = dpg.add_input_float(label="U")
-    # Cknob = dpg.add_input_float(label="Cknob")
-    # cable = dpg.add_input_float(label="Cable Length")
-    # eta = dpg.add_input_float(label="Eta")
-    # phi = dpg.add_input_float(label="Phi")
-    # Cstray = dpg.add_input_float(label="CStray")
-    # k_range = dpg.add_input_float(label="K Range")
 
-    # function_input = dpg.add_input_float(label="F Input")
-    # scan_s = dpg.add_input_float(label="Scan Sweep")
-    # ranger = dpg.add_input_float(label="Range")
+    circ_params = (U,Cknob,cable,eta,phi,Cstray)
 
-    # circ_params = (U,Cknob,cable,eta,phi,Cstray)
-
-    dpg.add_input_float(label="P", callback=Update_Parameters_Callback, user_data=Parameters.P, default_value=P)
-    dpg.add_input_float(label="U", callback=Update_Parameters_Callback, user_data=Parameters.U, default_value=U)
-    dpg.add_input_float(label="Cknob", callback=Update_Parameters_Callback, user_data=Parameters.Cknob, default_value=Cknob)
-    dpg.add_input_float(label="Cable Length", callback=Update_Parameters_Callback, user_data=Parameters.cable,default_value=cable)
-    dpg.add_input_float(label="Eta", callback=Update_Parameters_Callback, user_data=Parameters.eta,default_value=eta)
-    dpg.add_input_float(label="Phi", callback=Update_Parameters_Callback, user_data=Parameters.phi,default_value=phi)
-    dpg.add_input_float(label="CStray", callback=Update_Parameters_Callback, user_data=Parameters.Cstray,default_value=Cstray)
-    dpg.add_input_float(label="K Ranger", callback=Update_Parameters_Callback, user_data=Parameters.k_range,default_value=k_range)
-    dpg.add_input_float(label="F Input", callback=Update_Parameters_Callback, user_data=Parameters.function_input,default_value=function_input)
-    dpg.add_input_float(label="Scan Sweep", callback=Update_Parameters_Callback, user_data=Parameters.scan_s,default_value=scan_s)
-    dpg.add_input_float(label="Range", callback=Update_Parameters_Callback, user_data=Parameters.ranger,default_value=ranger)
+    dpg.add_input_float(tag="P", label = "P", callback=Update_Parameters_Callback, default_value=P)
+    dpg.add_input_float(tag="U",label="U", callback=Update_Parameters_Callback, default_value=U)
+    dpg.add_input_float(tag="Cknob",label="Cknob", callback=Update_Parameters_Callback, default_value=Cknob)
+    dpg.add_input_float(tag="cable",label="cable", callback=Update_Parameters_Callback ,default_value=cable)
+    dpg.add_input_float(tag="eta",label="eta", callback=Update_Parameters_Callback,default_value=eta)
+    dpg.add_input_float(tag="phi",label="phi", callback=Update_Parameters_Callback,default_value=phi)
+    dpg.add_input_float(tag="Cstray",label="Cstray", callback=Update_Parameters_Callback ,default_value=Cstray)
+    dpg.add_input_float(tag="k_range",label="k_range", callback=Update_Parameters_Callback,default_value=k_range)
+    dpg.add_input_float(tag="function_input",label="function_input", callback=Update_Parameters_Callback,default_value=function_input)
+    dpg.add_input_float(tag="scan_s",label="scan_s", callback=Update_Parameters_Callback,default_value=scan_s)
+    dpg.add_input_int(tag="ranger",label="ranger", callback=Update_Parameters_Callback,default_value=ranger)
 
 
     with dpg.plot(label='Deuteron Lineshape', height=240, width=500):
-        # optionally create legend
         dpg.add_plot_legend()
 
-        # REQUIRED: create x and y axes, set to auto scale.
         x_axis = dpg.add_plot_axis(dpg.mvXAxis, label='x', tag='x_axis')
         y_axis = dpg.add_plot_axis(dpg.mvYAxis, label='y', tag='y_axis')
 
-
-        # series belong to a y axis. Note the tag name is used in the update
-        # function update_data
         dpg.add_line_series(x=data_x,y=data_y, 
                             label='Lineshape', parent='y_axis', 
                             tag='series_tag')
+        
+    with dpg.plot(label='Filtered Signal', height=240, width=500):
+        # optionally create legend
+        dpg.add_plot_legend()
+
+        # REQUIRED: create x and y axes
+        x_axis = dpg.add_plot_axis(dpg.mvXAxis, label='x', tag='x_axis2')
+        y_axis = dpg.add_plot_axis(dpg.mvYAxis, label='y', tag='y_axis2')
+
+        # series belong to a y axis
+        dpg.add_line_series(x=data_x,y=data_y, 
+                            label='Lineshape', parent='y_axis2', 
+                            tag='series_tag2')
         
             
                             
