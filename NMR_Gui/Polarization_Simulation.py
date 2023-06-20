@@ -5,7 +5,6 @@ import threading
 import pandas as pd
 import numpy as np
 from PyQt_Polarization import *
-from numba import jit, njit
 # import tensorflow as tf
 # from tensorflow import keras
 # from tensorflow.keras.models import load_model
@@ -29,17 +28,6 @@ Current = np.loadtxt(r'New_Current.csv', unpack = True)
 
 testmodel = tf.keras.models.load_model(r'trained_model_1M_v5.h5')
 
-nsamples = 500
-
-global data_y
-global data_x
-global data_y_pred
-
-data_y = [0.0] * nsamples
-data_x = [0.0] * nsamples
-result_pred_new = [0.0] * nsamples
-
-p_pred=0
 
 
 class Parameters():
@@ -56,16 +44,39 @@ class Parameters():
     scan_s = scan_s
     ranger = ranger
 
+class Polarization_Predicted():
+    P_Pred = P
+
+if Parameters.ranger == 1:
+    nsamples = 5000
+else:
+    nsamples = 500
+
+global data_y
+global data_x
+global data_y_pred
+
+data_y = [0.0] * nsamples
+data_x = [0.0] * nsamples
+result_pred_new = [0.0] * nsamples
+
+
+
+p_pred=0
+
 def Update_Parameters_Callback(sender, value):
     setattr(Parameters, sender, value)
     dpg.set_value(sender, value)
 
-@jit 
+
+def Update_Polarization_Callback(sender, value):
+    setattr(Polarization_Predicted, sender, value)
+    dpg.set_value(sender, value)
+
+
 def update_data():
     Inputs = Simulate(Config(Parameters.circ_params,Parameters.k_range,Parameters.function_input,Parameters.scan_s, Parameters.ranger, Backgmd, Backreal, Current))
     while True:
-        # Inputs = Simulate(Config(Parameters.circ_params,Parameters.k_range,Parameters.function_input,Parameters.scan_s, Parameters.ranger, Backgmd, Backreal, Current))
-
 
         data_x = Inputs.LabviewCalculateXArray((Parameters.U,Parameters.Cknob,Parameters.cable,Parameters.eta,Parameters.phi,Parameters.Cstray),Parameters.scan_s,Parameters.k_range,Parameters.ranger,Parameters.function_input)
         data_y = Inputs.Lineshape(Parameters.P,(Parameters.U,Parameters.Cknob,Parameters.cable,Parameters.eta,Parameters.phi,Parameters.Cstray),Parameters.function_input,Parameters.scan_s, Parameters.ranger,Parameters.k_range)
@@ -89,6 +100,7 @@ def update_data():
 dpg.create_context()
 with dpg.window(label='NMR Simulation', tag='win',width=800, height=600):
 
+
     circ_params = (U,Cknob,cable,eta,phi,Cstray)
 
     dpg.add_input_float(tag="P", label = "P", callback=Update_Parameters_Callback, default_value=P)
@@ -103,12 +115,12 @@ with dpg.window(label='NMR Simulation', tag='win',width=800, height=600):
     dpg.add_input_float(tag="scan_s",label="scan_s", callback=Update_Parameters_Callback,default_value=scan_s)
     dpg.add_input_int(tag="ranger",label="ranger", callback=Update_Parameters_Callback,default_value=ranger)
 
-    dpg.add_text(label = "Predicted P", default_value='0.5', tag = "P_Pred")
-
+    dpg.add_float_value(tag = "P_Pred", label = "Predicted P", callback = Update_Polarization_Callback,default_value=0.5)
 
     with dpg.plot(label='Deuteron Lineshape', height=240, width=500):
         dpg.add_plot_legend()
 
+    
         x_axis = dpg.add_plot_axis(dpg.mvXAxis, label='x', tag='x_axis')
         y_axis = dpg.add_plot_axis(dpg.mvYAxis, label='y', tag='y_axis')
 
@@ -129,8 +141,7 @@ with dpg.window(label='NMR Simulation', tag='win',width=800, height=600):
                             label='Lineshape', parent='y_axis2', 
                             tag='series_tag2')
         
-            
-                            
+        
 dpg.create_viewport(title='Custom Title', width=850, height=640)
 
 dpg.setup_dearpygui()

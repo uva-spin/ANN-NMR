@@ -14,9 +14,8 @@ import matplotlib.pyplot as plt
 import statistics as std
 import tensorflow as tf
 from tensorflow import keras
-from tensorflow.keras.models import load_model
-from numba import njit, jit
-from numba.experimental import jitclass
+from tensorflow.python.keras.models import load_model
+
 
 
 
@@ -206,7 +205,7 @@ class Simulate():
         
         #Functions
 
-        @jit 
+ 
         def slope():
             return delta_C / (0.25 * 2 * pi * 1e6)
 
