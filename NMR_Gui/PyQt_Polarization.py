@@ -15,6 +15,9 @@ import statistics as std
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras.models import load_model
+from numba import njit, jit
+from numba.experimental import jitclass
+
 
 
 class Config():
@@ -83,6 +86,7 @@ class Config():
         self.current_sig = current
         self.backgmd_sig = backgmd
         self.backreal_sig = backreal
+ 
 class Simulate():
 
     def __init__(self,configuration):
@@ -138,7 +142,7 @@ class Simulate():
         if (rangesize == 1):
             return_val = larger_range
         return return_val
-
+    
     def getArrayFromFunc(self,func,inputs):
         output = []
         for input in inputs:
@@ -201,6 +205,8 @@ class Simulate():
         delta_w = 2 * pi * 500 * ((1e3)/500)
         
         #Functions
+
+        @jit 
         def slope():
             return delta_C / (0.25 * 2 * pi * 1e6)
 
@@ -368,30 +374,24 @@ class Simulate():
         if (rangesize == 1):
             out_y = Simulate.getArrayFromFunc(self,V_out,larger_range)
         return out_y
-    
+
     def cosal(self,x,eps):
         return (1-eps*x-self.Inputs.s)/Simulate.bigxsquare(self,x,eps)
-
 
     def c(self,x):
         return ((self.Inputs.g**2+(1-x-self.Inputs.s)**2)**0.5)**0.5
 
-
     def bigxsquare(self,x,eps):
         return (self.Inputs.g**2+(1-eps*x-self.Inputs.s)**2)**0.5
-
 
     def mult_term(self,x,eps):
         return float(1)/(2*np.pi*np.sqrt(Simulate.bigxsquare(self,x,eps)))
 
-
     def cosaltwo(self,x,eps):
         return ((1+Simulate.cosal(self,x,eps))/2)**0.5
 
-
     def sinaltwo(self,x,eps):
         return ((1-Simulate.cosal(self,x,eps))/2)**0.5
-
 
     def termone(self,x,eps):
         return np.pi/2+np.arctan((self.Inputs.bigy**2-Simulate.bigxsquare(self,x,eps))/((2*self.Inputs.bigy*(Simulate.bigxsquare(self,x,eps))**0.5)*Simulate.sinaltwo(self,x,eps)))
@@ -399,7 +399,6 @@ class Simulate():
 
     def termtwo(self,x,eps):
         return np.log((self.Inputs.bigy**2+Simulate.bigxsquare(self,x,eps)+2*self.Inputs.bigy*(Simulate.bigxsquare(self,x,eps)**0.5)*Simulate.cosaltwo(self,x,eps))/(self.Inputs.bigy**2+Simulate.bigxsquare(self,x,eps)-2*self.Inputs.bigy*(Simulate.bigxsquare(self,x,eps)**0.5)*Simulate.cosaltwo(self,x,eps)))
-
     def icurve(self,x,eps):
         return Simulate.mult_term(self,x,eps)*(2*Simulate.cosaltwo(self,x,eps)*Simulate.termone(self,x,eps)+Simulate.sinaltwo(self,x,eps)*Simulate.termtwo(self,x,eps))
     
@@ -434,11 +433,12 @@ class Simulate():
         sig = offset + noise
         return sig
 
+
 def Predict(X,Polarization, testmodel):
     #X = np.array(X)
     acc = []
     X = np.reshape(X,(1,500))
-    Y = testmodel.predict(X)
+    Y = testmodel.predict(X,batch_size=10000)
     Y = Y.reshape((len(Y),))
     g = 0.05
     s = 0.04

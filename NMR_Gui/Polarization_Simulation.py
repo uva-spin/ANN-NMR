@@ -5,6 +5,7 @@ import threading
 import pandas as pd
 import numpy as np
 from PyQt_Polarization import *
+from numba import jit, njit
 # import tensorflow as tf
 # from tensorflow import keras
 # from tensorflow.keras.models import load_model
@@ -22,25 +23,24 @@ circ_params = (U,Cknob,cable,eta,phi,Cstray)
 function_input = 32000000
 scan_s = .25
 ranger = 0
-Backgmd = np.loadtxt(r'C:\Work\ANN\ANN-NMR\NMR_Gui\Backgmd.dat', unpack = True)
-Backreal = np.loadtxt(r'C:\Work\ANN\ANN-NMR\NMR_Gui\Backreal.dat', unpack = True)
-Current = np.loadtxt(r'C:\Work\ANN\ANN-NMR\NMR_Gui\New_Current.csv', unpack = True)
+Backgmd = np.loadtxt(r'Backgmd.dat', unpack = True)
+Backreal = np.loadtxt(r'Backreal.dat', unpack = True)
+Current = np.loadtxt(r'New_Current.csv', unpack = True)
 
-testmodel = tf.keras.models.load_model(r'C:\Users\Devin\Desktop\Spin Physics Work\Deuteron\trained_model_1M_v5.h5')
+testmodel = tf.keras.models.load_model(r'trained_model_1M_v5.h5')
 
 nsamples = 500
 
 global data_y
 global data_x
+global data_y_pred
 
 data_y = [0.0] * nsamples
 data_x = [0.0] * nsamples
+result_pred_new = [0.0] * nsamples
 
-sindatax = []
-sindatay = []
-for i in range(0, 500):
-    sindatax.append(i / 1000)
-    sindatay.append(0.5 + 0.5 * sin(50 * i / 1000))
+p_pred=0
+
 
 class Parameters():
     P = P
@@ -60,29 +60,27 @@ def Update_Parameters_Callback(sender, value):
     setattr(Parameters, sender, value)
     dpg.set_value(sender, value)
 
-    # dpg.set_value(sender, Parameters.value)
-
+@jit 
 def update_data():
-    # Inputs = Simulate(Config(Parameters.circ_params,Parameters.k_range,Parameters.function_input,Parameters.scan_s, Parameters.ranger, Backgmd, Backreal, Current))
+    Inputs = Simulate(Config(Parameters.circ_params,Parameters.k_range,Parameters.function_input,Parameters.scan_s, Parameters.ranger, Backgmd, Backreal, Current))
     while True:
-        Inputs = Simulate(Config(Parameters.circ_params,Parameters.k_range,Parameters.function_input,Parameters.scan_s, Parameters.ranger, Backgmd, Backreal, Current))
+        # Inputs = Simulate(Config(Parameters.circ_params,Parameters.k_range,Parameters.function_input,Parameters.scan_s, Parameters.ranger, Backgmd, Backreal, Current))
 
 
         data_x = Inputs.LabviewCalculateXArray((Parameters.U,Parameters.Cknob,Parameters.cable,Parameters.eta,Parameters.phi,Parameters.Cstray),Parameters.scan_s,Parameters.k_range,Parameters.ranger,Parameters.function_input)
         data_y = Inputs.Lineshape(Parameters.P,(Parameters.U,Parameters.Cknob,Parameters.cable,Parameters.eta,Parameters.phi,Parameters.Cstray),Parameters.function_input,Parameters.scan_s, Parameters.ranger,Parameters.k_range)
 
         
-        prediction = Predict(data_y, Parameters.P, testmodel)
+        p, p_pred, result_new, result_pred_new = Predict(data_y, Parameters.P, testmodel)
 
-        data_y_pred =Inputs.Lineshape(prediction,(Parameters.U,Parameters.Cknob,Parameters.cable,Parameters.eta,Parameters.phi,Parameters.Cstray),Parameters.function_input,Parameters.scan_s, Parameters.ranger,Parameters.k_range)\
+        # data_y_pred =Inputs.Lineshape(p_pred,(Parameters.U,Parameters.Cknob,Parameters.cable,Parameters.eta,Parameters.phi,Parameters.Cstray),Parameters.function_input,Parameters.scan_s, Parameters.ranger,Parameters.k_range)\
         
         dpg.set_value('series_tag', [list(data_x), list(data_y)])    
-        dpg.set_value('series_tag2', [list(data_x), list(data_y_pred)])        
+        dpg.set_value('series_tag2', [list(data_x), list(result_pred_new)])        
         dpg.fit_axis_data('x_axis')
         dpg.fit_axis_data('y_axis')
         dpg.fit_axis_data('x_axis2')
         dpg.fit_axis_data('y_axis2')
-        # dpg.fit_axis_data('y_axis2')
         
         # time.sleep(13/200)
            
@@ -105,6 +103,8 @@ with dpg.window(label='NMR Simulation', tag='win',width=800, height=600):
     dpg.add_input_float(tag="scan_s",label="scan_s", callback=Update_Parameters_Callback,default_value=scan_s)
     dpg.add_input_int(tag="ranger",label="ranger", callback=Update_Parameters_Callback,default_value=ranger)
 
+    dpg.add_text(label = "Predicted P", default_value='0.5', tag = "P_Pred")
+
 
     with dpg.plot(label='Deuteron Lineshape', height=240, width=500):
         dpg.add_plot_legend()
@@ -125,7 +125,7 @@ with dpg.window(label='NMR Simulation', tag='win',width=800, height=600):
         y_axis = dpg.add_plot_axis(dpg.mvYAxis, label='y', tag='y_axis2')
 
         # series belong to a y axis
-        dpg.add_line_series(x=data_x,y=data_y, 
+        dpg.add_line_series(x=data_x,y=result_pred_new, 
                             label='Lineshape', parent='y_axis2', 
                             tag='series_tag2')
         

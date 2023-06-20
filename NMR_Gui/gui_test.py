@@ -22,9 +22,9 @@ circ_params = (U,Cknob,cable,eta,phi,Cstray)
 function_input = 32000000
 scan_s = .25
 ranger = 0
-Backgmd = np.loadtxt(r'C:\Work\ANN\ANN-NMR\NMR_Gui\Backgmd.dat', unpack = True)
-Backreal = np.loadtxt(r'C:\Work\ANN\ANN-NMR\NMR_Gui\Backreal.dat', unpack = True)
-Current = np.loadtxt(r'C:\Work\ANN\ANN-NMR\NMR_Gui\New_Current.csv', unpack = True)
+Backgmd = np.loadtxt(r'Backgmd.dat', unpack = True)
+Backreal = np.loadtxt(r'Backreal.dat', unpack = True)
+Current = np.loadtxt(r'New_Current.csv', unpack = True)
 
 
 class MplCanvas(FigureCanvas):
@@ -51,9 +51,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.reference_plot = None    
         # self.q = queue.Queue(maxsize=20)  
         self.timer = QtCore.QTimer()
-        self.timer.setInterval(self.interval)
-        self.timer.timeout.connect(self.update_plot)
-        self.timer.start()
+        # self.timer.setInterval(self.interval)
+        # self.timer.timeout.connect(self.update_plot)
+        # self.timer.start()
           
 
         self.Inputs = Simulate(Config(circ_params,k_range,function_input,scan_s, ranger, Backgmd, Backreal, Current))
