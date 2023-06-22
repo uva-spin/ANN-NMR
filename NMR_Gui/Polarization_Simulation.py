@@ -22,9 +22,9 @@ circ_params = (U,Cknob,cable,eta,phi,Cstray)
 function_input = 32000000
 scan_s = .25
 ranger = 0
-Backgmd = np.loadtxt(r'Backgmd.dat', unpack = True)
-Backreal = np.loadtxt(r'Backreal.dat', unpack = True)
-Current = np.loadtxt(r'New_Current.csv', unpack = True)
+Backgmd = np.loadtxt('Backgmd.dat', unpack = True)
+Backreal = np.loadtxt('Backreal.dat', unpack = True)
+Current = np.loadtxt('New_Current.csv', unpack = True)
 
 testmodel = tf.keras.models.load_model(r'trained_model_1M_v5.h5')
 
@@ -69,9 +69,9 @@ def Update_Parameters_Callback(sender, value):
     dpg.set_value(sender, value)
 
 
-def Update_Polarization_Callback(sender, value):
-    setattr(Polarization_Predicted, sender, value)
-    dpg.set_value(sender, value)
+def Update_Polarization_Callback(p_pred):
+    # setattr(Polarization_Predicted, sender, value)
+    dpg.set_value("P_Pred", p_pred)
 
 
 def update_data():
@@ -98,6 +98,8 @@ def update_data():
 
 
 dpg.create_context()
+
+
 with dpg.window(label='NMR Simulation', tag='win',width=800, height=600):
 
 
@@ -115,7 +117,11 @@ with dpg.window(label='NMR Simulation', tag='win',width=800, height=600):
     dpg.add_input_float(tag="scan_s",label="scan_s", callback=Update_Parameters_Callback,default_value=scan_s)
     dpg.add_input_int(tag="ranger",label="ranger", callback=Update_Parameters_Callback,default_value=ranger)
 
-    dpg.add_float_value(tag = "P_Pred", label = "Predicted P", callback = Update_Polarization_Callback,default_value=0.5)
+    Update_Polarization_Callback(p_pred)
+
+    with dpg.value_registry(label = "Predicted P"):
+        dpg.add_float_value(tag = "P_Pred",default_value=0.5)
+
 
     with dpg.plot(label='Deuteron Lineshape', height=240, width=500):
         dpg.add_plot_legend()
