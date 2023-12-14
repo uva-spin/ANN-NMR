@@ -10,15 +10,16 @@ g = 0.05
 s = 0.04
 bigy=(3-s)**0.5
 labelfontsize = 30
+SNR_level = 2.5
 
 ###Circuit Parameters###
-U = 0.1
-# Cknob = 0.125
-Cknob = 0.016
-cable = 2.5
-eta = 0.0104
-phi = 6.1319
-Cstray = 10**(-15)
+U = .1
+Cknob = 0.455
+# Cknob = 10e-3
+cable = .5
+eta = 0.1
+phi = .765
+Cstray = 0.081e-9
 
 k_range = 5000
 circ_constants = (3*10**(-8),0.35,619,50,10,0.0343,4.752*10**(-9),50,1.027*10**(-10),2.542*10**(-7),0,0,0,0)
@@ -279,20 +280,26 @@ def LabviewCalculateYArray(circ_consts, params, f_input, scansize, main_sig, der
         return phi_trim(w) + phi_const
 
     def V_out(w):
-        return -1*(I*Ztotal(w)*np.exp(im_unit*phi(w)*pi/180))
+        return -1*(I*Ztotal(w)*np.exp(im_unit*phi(w)*pi/180)).real
 
     
     larger_k = range(0,k_range)
     larger_x = np.array(larger_k, float)
     w_range = w_high - w_low
     larger_range = (delta_w*larger_x)+(w_low-5*w_range)
+
+    # w_res = 2*pi*f
+    # w_low = 2 * pi * (213 - scansize) * (1e6)
+    # w_high = 2 * pi * (213 + scansize) * (1e6)
+    # delta_w = 2 * pi * 500 * ((1e3)/500)
     
     out_y = getArrayFromFunc(V_out,x)
     if (rangesize == 1):
         out_y = getArrayFromFunc(V_out,larger_range)
     return out_y
 
-
+    
+# baseline = LabviewCalculateYArray(circ_constants, circ_params, function_input, scan_s, Deuteron_Dat, Deuteron_Deriv, Backgmd, Backreal, Current, ranger)
     
 
 def cosal(x,eps):
@@ -329,15 +336,8 @@ def termtwo(x,eps):
 def icurve(x,eps):
     return mult_term(x,eps)*(2*cosaltwo(x,eps)*termone(x,eps)+sinaltwo(x,eps)*termtwo(x,eps))
     
-def Polarization(x):
-    return 0.95*(1.0-np.exp(0.005*x))
     
-def Polarization_Display(x,alpha):
-    P = 0.95*(1.0-np.exp(-alpha*x))
-    return P
-    
-    
-def Lineshape(P,SNR_Level):
+def Lineshape(P):
     xvals = np.linspace(-6,6,500)
     yvals = icurve(xvals,1)/10
     yvals2 = icurve(-xvals,1)/10
@@ -362,8 +362,17 @@ def Lineshape(P,SNR_Level):
     lineshape = LabviewCalculateYArray(circ_constants, circ_params, function_input, scan_s, signal, signal, Backgmd, Backreal,Current, ranger)
     offset = [x - max(lineshape) for x in lineshape]
     offset = np.array(offset)
-    noisey = max(list(map(abs, offset)))/SNR_Level
+    noisey = max(list(map(abs, offset)))/SNR_level
     fluc = noisey*.1
     noise = np.random.normal(noisey,fluc,500)
     sig = offset + noise
     return sig
+
+signal = np.empty(500)
+lineshape = LabviewCalculateYArray(circ_constants, circ_params, function_input, scan_s, signal, signal, Backgmd, Backreal,Current, ranger)
+
+x = np.linspace(32,33,500)
+
+plt.plot(x,lineshape)
+# plt.savefig("Test.pdf")
+

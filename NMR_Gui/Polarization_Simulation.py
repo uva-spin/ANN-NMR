@@ -4,10 +4,10 @@ import time
 import threading
 import pandas as pd
 import numpy as np
-from PyQt_Polarization import *
-# import tensorflow as tf
-# from tensorflow import keras
-# from tensorflow.keras.models import load_model
+from Lineshape_Code import *
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras.models import load_model
 
 ###Circuit Parameters###
 P = .5
@@ -59,7 +59,7 @@ global data_y_pred
 data_y = [0.0] * nsamples
 data_x = [0.0] * nsamples
 result_pred_new = [0.0] * nsamples
-
+R = np.linspace(-3,3,nsamples)
 
 
 p_pred=0
@@ -87,15 +87,13 @@ def update_data():
         # data_y_pred =Inputs.Lineshape(p_pred,(Parameters.U,Parameters.Cknob,Parameters.cable,Parameters.eta,Parameters.phi,Parameters.Cstray),Parameters.function_input,Parameters.scan_s, Parameters.ranger,Parameters.k_range)\
         
         dpg.set_value('series_tag', [list(data_x), list(data_y)])    
-        dpg.set_value('series_tag2', [list(data_x), list(result_pred_new)])        
+        dpg.set_value('series_tag2', [list(R), list(result_pred_new)])      
+        dpg.set_value('p_pred',p_pred)  
         dpg.fit_axis_data('x_axis')
         dpg.fit_axis_data('y_axis')
         dpg.fit_axis_data('x_axis2')
         dpg.fit_axis_data('y_axis2')
-        
-        # time.sleep(13/200)
-           
-
+    
 
 dpg.create_context()
 
@@ -116,8 +114,8 @@ with dpg.window(label='NMR Simulation', tag='win',width=800, height=600):
     dpg.add_input_float(tag="function_input",label="function_input", callback=Update_Parameters_Callback,default_value=function_input)
     dpg.add_input_float(tag="scan_s",label="scan_s", callback=Update_Parameters_Callback,default_value=scan_s)
     dpg.add_input_int(tag="ranger",label="ranger", callback=Update_Parameters_Callback,default_value=ranger)
+    dpg.add_input_float(tag = 'p_pred',label = 'Predicted Polarization', callback=Update_Polarization_Callback,default_value=0)
 
-    Update_Polarization_Callback(p_pred)
 
     with dpg.value_registry(label = "Predicted P"):
         dpg.add_float_value(tag = "P_Pred",default_value=0.5)
@@ -127,8 +125,8 @@ with dpg.window(label='NMR Simulation', tag='win',width=800, height=600):
         dpg.add_plot_legend()
 
     
-        x_axis = dpg.add_plot_axis(dpg.mvXAxis, label='x', tag='x_axis')
-        y_axis = dpg.add_plot_axis(dpg.mvYAxis, label='y', tag='y_axis')
+        x_axis = dpg.add_plot_axis(dpg.mvXAxis, label='w', tag='x_axis')
+        y_axis = dpg.add_plot_axis(dpg.mvYAxis, label='V', tag='y_axis')
 
         dpg.add_line_series(x=data_x,y=data_y, 
                             label='Lineshape', parent='y_axis', 
@@ -139,11 +137,11 @@ with dpg.window(label='NMR Simulation', tag='win',width=800, height=600):
         dpg.add_plot_legend()
 
         # REQUIRED: create x and y axes
-        x_axis = dpg.add_plot_axis(dpg.mvXAxis, label='x', tag='x_axis2')
-        y_axis = dpg.add_plot_axis(dpg.mvYAxis, label='y', tag='y_axis2')
+        x_axis = dpg.add_plot_axis(dpg.mvXAxis, label='R', tag='x_axis2')
+        y_axis = dpg.add_plot_axis(dpg.mvYAxis, label='Intensity (V)', tag='y_axis2')
 
         # series belong to a y axis
-        dpg.add_line_series(x=data_x,y=result_pred_new, 
+        dpg.add_line_series(x=R,y=result_pred_new, 
                             label='Lineshape', parent='y_axis2', 
                             tag='series_tag2')
         
