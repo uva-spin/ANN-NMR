@@ -6,6 +6,7 @@ from scipy import interpolate
 import cmath
 import matplotlib.pyplot as plt
 import statistics as std
+from scipy.stats import zscore
 g = 0.05
 s = 0.04
 bigy=(3-s)**0.5
@@ -28,13 +29,36 @@ function_input = 32000000
 scan_s = .25
 ranger = 0
 # ---- Data Files ---- #
-Backgmd = np.loadtxt(r'/project/ptgroup/Devin/Neural_Network/Q_Meter_Data/Backgmd.dat', unpack = True)
-Backreal = np.loadtxt(r'/project/ptgroup/Devin/Neural_Network/Q_Meter_Data/Backreal.dat', unpack = True)
-Current = np.loadtxt(r'/project/ptgroup/Devin/Neural_Network/New_Current.csv', unpack = True)
-# Deuteron_Dat = np.loadtxt(r'C:\Users\Devin\Desktop\Spin Physics Work\ANN-NMR-main\Qmeter_Simulation\qmeter_simulation-master\data\DEUTERON.dat', unpack = True)
-# Deuteron_Deriv = np.loadtxt(r'C:\Users\Devin\Desktop\Spin Physics Work\ANN-NMR-main\Qmeter_Simulation\qmeter_simulation-master\data\DDEUTERON.dat', unpack = True)
-# Deuteron_Dat = np.loadtxt(r'C:\Users\Devin\Desktop\Spin Physics Work\ANN-NMR-main\Qmeter_Simulation\qmeter_simulation-master\data\PROTON.dat', unpack = True)
-# Deuteron_Deriv = np.loadtxt(r'C:\Users\Devin\Desktop\Spin Physics Work\ANN-NMR-main\Qmeter_Simulation\qmeter_simulation-master\data\DPROTON.dat', unpack = True)
+# Backgmd = np.loadtxt(r'/project/ptgroup/Devin/Neural_Network/Q_Meter_Data/Backgmd.dat', unpack = True)
+# Backreal = np.loadtxt(r'/project/ptgroup/Devin/Neural_Network/Q_Meter_Data/Backreal.dat', unpack = True)
+# Current = np.loadtxt(r'/project/ptgroup/Devin/Neural_Network/New_Current.csv', unpack = True)
+Backgmd = np.loadtxt(r'J:\Users\Devin\Desktop\Spin Physics Work\ANN Github\NMR-Fermilab\ANN-NMR\NN_Latest\data\Backgmd.dat', unpack = True)
+Backreal = np.loadtxt(r'J:\Users\Devin\Desktop\Spin Physics Work\ANN Github\NMR-Fermilab\ANN-NMR\NN_Latest\data\Backreal.dat', unpack = True)
+Current = np.loadtxt(r'J:\Users\Devin\Desktop\Spin Physics Work\Deuteron\New_Current.csv', unpack = True)
+df_rawsignal_noise = pd.read_csv(r"J:\Users\Devin\Desktop\Spin Physics Work\ANN Github\NMR-Fermilab\ANN-NMR\NN_Latest\noise-20240527T224337Z-001\noise\2024-05-24_16h12m33s-PolySignal.csv",header=None)
+df_rawsignal_noise = df_rawsignal_noise.drop([0],axis=1)
+
+def choose_random_row(csv_file):
+    df = csv_file
+    if df.empty:
+        return None  # If the DataFrame is empty
+    random_index = np.random.randint(0, len(df))  # Generate a random index
+    random_row = df.iloc[random_index]  # Get the row at the random index
+    return random_row
+
+def exclude_outliers(df, threshold=2):
+    # Compute Z-scores for each row
+    z_scores = df.apply(zscore, axis=0, result_type='broadcast')
+    
+    # Check if any Z-score exceeds the threshold
+    is_outlier = (z_scores.abs() > threshold).any(axis=1)
+    
+    # Exclude outliers
+    df_filtered = df[~is_outlier]
+    
+    return df_filtered
+
+df_filtered = exclude_outliers(df_rawsignal_noise)
 
 
 def LabviewCalculateXArray(f_input, scansize, rangesize):
@@ -343,14 +367,52 @@ Iplus = icurve(norm_array,1)
 Iminus = icurve(norm_array,-1)
 ratio = Iminus/Iplus
     
-SNR_level = 2.5
+# SNR_level = 2.5
+
+# R_arr = []
+# # R_arr_noise = []
+# P_arr = []
+# SNR_arr = []
+# for x in range(0,1000):
+#     P = np.random.uniform(0,1)
+#     r = (np.sqrt(4-3*P**(2))+P)/(2-2*P)
+#     Iminus = icurve(norm_array,-1)
+#     array = r*Iminus
+#     array_flipped = np.flip(array)
+#     element_1 = array_flipped+Iminus
+#     sum_array = np.sum(array_flipped)*(12/500)
+#     element_2 = 1/sum_array
+#     element_3 = P
+#     signal = element_1*element_2*element_3
+#     result = signal 
+#     lineshape = LabviewCalculateYArray(circ_constants, circ_params, function_input, scan_s, result, result, Backgmd, Backreal,Current, ranger)
+#     offset = [x - max(lineshape) for x in lineshape]
+#     noisey = max(list(map(abs, offset)))/SNR_level
+#     fluc = noisey*.1
+#     noise = np.random.normal(noisey,fluc,500)
+#     sig = offset + noise
+#     x_sig = max(list(map(abs, offset)))
+#     y_sig = max(list(map(abs,noise)))
+#     SNR = (x_sig/y_sig)
+#     R_arr.append(sig)
+#     # R_arr_noise.append(result_noisy)
+#     df = pd.DataFrame(R_arr)
+#     # df_noise = pd.DataFrame(R_arr_noise)
+#     P_arr.append(np.round(P,6))
+#     SNR_arr.append(SNR)
+# df['P'] = P_arr
+# df['SNR'] = SNR_arr
+# # df_noise['P'] = P_arr
+# # df.to_csv('Sample_Data_v2/Sample_Data_TE_v4/Sample_Data_500K_' + str(sys.argv[1]) + '.csv',index=False)
+# df.to_csv('Testing_Data_v5/Sample_Data' + str(sys.argv[1]) + '.csv',index=False)
+# # df.to_csv('Test.csv',index=False)
 
 R_arr = []
-R_arr_noise = []
 P_arr = []
 SNR_arr = []
-for x in range(0,1000):
-    P = np.random.uniform(0,1)
+for x in range(0,10):
+    # P = np.random.uniform(0,1)
+    P = .0005
     r = (np.sqrt(4-3*P**(2))+P)/(2-2*P)
     Iminus = icurve(norm_array,-1)
     array = r*Iminus
@@ -363,9 +425,7 @@ for x in range(0,1000):
     result = signal 
     lineshape = LabviewCalculateYArray(circ_constants, circ_params, function_input, scan_s, result, result, Backgmd, Backreal,Current, ranger)
     offset = [x - max(lineshape) for x in lineshape]
-    noisey = max(list(map(abs, offset)))/SNR_level
-    fluc = noisey*.1
-    noise = np.random.normal(noisey,fluc,500)
+    noise = choose_random_row(df_filtered)
     sig = offset + noise
     x_sig = max(list(map(abs, offset)))
     y_sig = max(list(map(abs,noise)))
@@ -378,7 +438,5 @@ for x in range(0,1000):
     SNR_arr.append(SNR)
 df['P'] = P_arr
 df['SNR'] = SNR_arr
-# df_noise['P'] = P_arr
-# df.to_csv('Sample_Data_v2/Sample_Data_TE_v4/Sample_Data_500K_' + str(sys.argv[1]) + '.csv',index=False)
-df.to_csv('Testing_Data_v5/Sample_Data' + str(sys.argv[1]) + '.csv',index=False)
-# df.to_csv('Test.csv',index=False)
+# df.to_csv('Testing_Data_v5/Sample_Data' + str(sys.argv[1]) + '.csv',index=False)
+df.to_csv('Test.csv',index=False)
