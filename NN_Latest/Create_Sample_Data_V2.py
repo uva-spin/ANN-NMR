@@ -7,6 +7,7 @@ import cmath
 import matplotlib.pyplot as plt
 import statistics as std
 from scipy.stats import zscore
+import math
 g = 0.05
 s = 0.04
 bigy=(3-s)**0.5
@@ -14,14 +15,14 @@ labelfontsize = 30
 
 ###Circuit Parameters###
 U = 0.1
-# Cknob = 0.125
-Cknob = 0.016
-cable = 2.5
+Cknob = 0.180 
+# Cknob = 0.011
+cable = 6
 eta = 0.0104
 phi = 6.1319
 Cstray = 10**(-15)
 
-k_range = 5000
+k_range = 500
 circ_constants = (3*10**(-8),0.35,619,50,10,0.0343,4.752*10**(-9),50,1.027*10**(-10),2.542*10**(-7),0,0,0,0)
 circ_params = (U,Cknob,cable,eta,phi,Cstray)
 function_input = 32000000
@@ -57,6 +58,22 @@ def exclude_outliers(df, threshold=2):
 
 def Baseline_Polynomial_Curve(w):
     return -1.84153246e-07*w**2 + 8.42855076e-05*w - 1.11342243e-04
+
+def random_sign():
+    return random.choice([-1, 1])
+
+def Sinusoidal_Noise(shape):
+    # Generate an array of random angles between 0 and 2*pi
+    angles = np.random.uniform(0, 2*np.pi, shape)
+    
+    # Calculate cosine and sine of each angle
+    cos_values = np.random.uniform(-0.0005,0.0005)*np.cos(angles)
+    sin_values = np.random.uniform(-0.0005,0.0005)*np.sin(angles)
+    
+    # Sum cosine and sine
+    result = cos_values + sin_values
+    
+    return result
 
 df_filtered = exclude_outliers(df_rawsignal_noise)
 
@@ -104,7 +121,7 @@ def getArrayFromFunc(func,inputs):
         output.append((func(input)).real)
     return output
 
-def LabviewCalculateYArray(circ_consts, params, f_input, scansize, main_sig, deriv_sig, backgmd_sig, backreal_sig, current_sig, rangesize):
+def LabviewCalculateYArray(circ_consts, params, f_input, scansize, current_sig, rangesize):
     
     #---------------------preamble----------------
     
@@ -208,35 +225,34 @@ def LabviewCalculateYArray(circ_consts, params, f_input, scansize, main_sig, der
     
     #Variables for creating splines
     k_ints = range(0,500)
-    # k_ints = np.linspace(31.2,32.3,500)
     k = np.array(k_ints,float)
     x = (k*delta_w)+(w_low)
     Icoil_TE = 0.11133
     
-    butxi = []
-    butxii = []
-    vback = []
-    vreal = []    
+    # butxi = []
+    # butxii = []
+    # vback = []
+    # vreal = []    
     Icoil = []
     
-    for item in deriv_sig:
-        butxi.append(item)
-    for item in main_sig:
-        butxii.append(item)
-    for item in backgmd_sig:
-        vback.append(item)
-    for item in backreal_sig:
-        vreal.append(item)
+    # for item in deriv_sig:
+    #     butxi.append(item)
+    # for item in main_sig:
+    #     butxii.append(item)
+    # for item in backgmd_sig:
+    #     vback.append(item)
+    # for item in backreal_sig:
+    #     vreal.append(item)
     for item in current_sig:
         Icoil.append(item)
     
-    x1 = interpolate.interp1d(x,butxi,fill_value=0.0,bounds_error=False)
-    x2 = interpolate.interp1d(x,butxii,fill_value=0.0,bounds_error=False)
+    # x1 = interpolate.interp1d(x,butxi,fill_value=0.0,bounds_error=False)
+    # x2 = interpolate.interp1d(x,butxii,fill_value=0.0,bounds_error=False)
     # b = interpolate.interp1d(x,vback,fill_value="extrapolate",kind="quadratic",bounds_error=False)
     # rb = interpolate.interp1d(x,vreal,fill_value="extrapolate",kind="quadratic",bounds_error=False)
     ic = interpolate.interp1d(x,Icoil,fill_value="extrapolate",kind="linear",bounds_error=False)
-    # x1 = Baseline_Polynomial_Curve(x)
-    # x2 = Baseline_Polynomial_Curve(x)
+    x1 = Baseline_Polynomial_Curve
+    x2 = Baseline_Polynomial_Curve
 
     
     def chi(w):
@@ -365,55 +381,19 @@ for x in length:
 Iplus = icurve(norm_array,1)
 Iminus = icurve(norm_array,-1)
 ratio = Iminus/Iplus
-    
-# SNR_level = 2.5
-
-# R_arr = []
-# # R_arr_noise = []
-# P_arr = []
-# SNR_arr = []
-# for x in range(0,1000):
-#     P = np.random.uniform(0,1)
-#     r = (np.sqrt(4-3*P**(2))+P)/(2-2*P)
-#     Iminus = icurve(norm_array,-1)
-#     array = r*Iminus
-#     array_flipped = np.flip(array)
-#     element_1 = array_flipped+Iminus
-#     sum_array = np.sum(array_flipped)*(12/500)
-#     element_2 = 1/sum_array
-#     element_3 = P
-#     signal = element_1*element_2*element_3
-#     result = signal 
-#     lineshape = LabviewCalculateYArray(circ_constants, circ_params, function_input, scan_s, result, result, Backgmd, Backreal,Current, ranger)
-#     offset = [x - max(lineshape) for x in lineshape]
-#     noisey = max(list(map(abs, offset)))/SNR_level
-#     fluc = noisey*.1
-#     noise = np.random.normal(noisey,fluc,500)
-#     sig = offset + noise
-#     x_sig = max(list(map(abs, offset)))
-#     y_sig = max(list(map(abs,noise)))
-#     SNR = (x_sig/y_sig)
-#     R_arr.append(sig)
-#     # R_arr_noise.append(result_noisy)
-#     df = pd.DataFrame(R_arr)
-#     # df_noise = pd.DataFrame(R_arr_noise)
-#     P_arr.append(np.round(P,6))
-#     SNR_arr.append(SNR)
-# df['P'] = P_arr
-# df['SNR'] = SNR_arr
-# # df_noise['P'] = P_arr
-# # df.to_csv('Sample_Data_v2/Sample_Data_TE_v4/Sample_Data_500K_' + str(sys.argv[1]) + '.csv',index=False)
-# df.to_csv('Testing_Data_v5/Sample_Data' + str(sys.argv[1]) + '.csv',index=False)
-# # df.to_csv('Test.csv',index=False)
 
 R_arr = []
 P_arr = []
 SNR_arr = []
-omega = np.linspace(31.2,32.3,500)
-baseline = Baseline_Polynomial_Curve(omega)
+U = 0.1
 for x in range(0,10):
     P = np.random.uniform(0,1)
-    # P = .0005
+    Cknob = 0.180 + np.random.uniform(-.07,.07)
+    cable = 6
+    eta = 0.0104
+    phi = 6.1319
+    Cstray = 10**(-15)
+    circ_params = (U,Cknob,cable,eta,phi,Cstray)
     r = (np.sqrt(4-3*P**(2))+P)/(2-2*P)
     Iminus = icurve(norm_array,-1)
     array = r*Iminus
@@ -422,23 +402,22 @@ for x in range(0,10):
     sum_array = np.sum(array_flipped)*(12/500)
     element_2 = 1/sum_array
     element_3 = P
-    signal = element_1*element_2*element_3
-    # lineshape = LabviewCalculateYArray(circ_constants, circ_params, function_input, scan_s, result, result, Backgmd, Backreal,Current, ranger)
-    # baseline = LabviewCalculateYArray(circ_constants, circ_params, function_input, scan_s, np.zeros(500), np.zeros(500), Backgmd, Backreal,Current, ranger)
-    shape = np.array(signal) - np.array(baseline)
-    # offset = [x - max(shape) for x in shape]
+    signal = -element_1*element_2*element_3/100
+    baseline = LabviewCalculateYArray(circ_constants, circ_params, function_input, scan_s, Current, ranger)
+    shape = np.array(signal) + np.array(baseline)
+    offset = np.array([x - min(shape) for x in shape])
     noise = choose_random_row(df_filtered)
     # noise = np.zeros(500)
-    sig = shape + noise
+    amplitude_shift = np.ones(500,)
+    sinusoidal_shift = Sinusoidal_Noise(500,)
+    sig = offset + noise + np.multiply(amplitude_shift,np.random.uniform(-0.01,0.01)) + sinusoidal_shift
     x_sig = max(list(map(abs, shape)))
     y_sig = max(list(map(abs,noise)))
     SNR = (x_sig/y_sig)
     R_arr.append(sig)
-    # R_arr_noise.append(result_noisy)
-    df = pd.DataFrame(R_arr)
-    # df_noise = pd.DataFrame(R_arr_noise)
     P_arr.append(np.round(P,6))
     SNR_arr.append(SNR)
+df = pd.DataFrame(R_arr)
 df['P'] = P_arr
 df['SNR'] = SNR_arr
 # df.to_csv('Testing_Data_v5/Sample_Data' + str(sys.argv[1]) + '.csv',index=False)
