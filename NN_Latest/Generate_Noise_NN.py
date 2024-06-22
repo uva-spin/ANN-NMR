@@ -7,6 +7,7 @@ from tensorflow.keras.layers import Dense, Dropout
 from tensorflow.keras.optimizers import Adam
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.stats import zscore
 
 def load_data_from_csv(file_path):
     """
@@ -19,7 +20,7 @@ def load_data_from_csv(file_path):
     data (numpy array): Loaded data after dropping the first column.
     """
     df = pd.read_csv(file_path, header=None)  # Read CSV without headers
-    data = df.iloc[1:, 1:].values  # Drop first row and first column
+    data = df.iloc[1:, 1:] # Drop first row and first column
     return data
 
 
@@ -53,15 +54,26 @@ def split_data(X, y, test_size=0.2, random_state=None):
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size, random_state=random_state)
     return X_train, X_test, y_train, y_test
 
+def exclude_outliers(df, threshold=2):
+    # Compute Z-scores for each row
+    z_scores = df.apply(zscore, axis=0, result_type='broadcast')
+    
+    # Check if any Z-score exceeds the threshold
+    is_outlier = (z_scores.abs() > threshold).any(axis=1)
+    
+    # Exclude outliers
+    df_filtered = df[~is_outlier].apply(lambda x: x / 1000)
+    
+    return df_filtered
 
 
 # Load real data from CSV
 # file_path = r'J:\Users\Devin\Desktop\Spin Physics Work\ANN Github\NMR-Fermilab\ANN-NMR\NN_Latest\Noise_Data\Noise_RawSignal.csv'
-file_path = r'C:\Work\ANN\Noise_RawSignal.csv'
-real_data = load_data_from_csv(file_path)
-y = real_data
-
-Scaling = real_data.mean(axis=1)
+file_path = r'J:\Users\Devin\Desktop\Spin Physics Work\ANN Github\NMR-Fermilab\Noise_RawSignal.csv'
+real_data = exclude_outliers(load_data_from_csv(file_path))
+y = real_data.values
+Scaling = y.mean(axis=1)
+print(Scaling)
 scaler = StandardScaler()
 Scaling = Scaling.reshape(-1, 1)
 X = scaler.fit_transform(Scaling)
@@ -71,17 +83,17 @@ X_train, X_test, y_train, y_test = split_data(X, real_data, test_size=0.3, rando
 model = Sequential()
 # Add multiple Dense layers to create a deeper network
 model.add(tf.keras.Input(shape=(1,)))
-# model.add(Dropout(0.5))
-# model.add(Dense(256, activation='relu'))
-# model.add(Dropout(0.5))
-# model.add(Dense(512, activation='relu'))
-# model.add(Dropout(0.5))
-model.add(Dense(128, activation='relu'))
-# model.add(Dropout(0.5))
-model.add(Dense(256, activation='relu'))
-# model.add(Dropout(0.5))
+model.add(Dropout(0.5))
+model.add(Dense(256, activation='tanh'))
+model.add(Dropout(0.7))
+model.add(Dense(512, activation='tanh'))
+model.add(Dropout(0.7))
+model.add(Dense(128, activation='tanh'))
+model.add(Dropout(0.7))
+model.add(Dense(256, activation='tanh'))
+model.add(Dropout(0.1))
 # Output layer
-model.add(Dense(500, activation='tanh'))
+model.add(Dense(500, activation='selu'))
 
 # Compile the model with a lower learning rate
 optimizer = Adam(learning_rate=0.001)
@@ -129,7 +141,7 @@ print(x.shape)
 plt.figure(figsize=(10, 6))
 for i in range(n-1):
     plt.plot(x[i], predictions[i], color='blue', label='Synthetic Data Example')
-    plt.plot(x[i], real_data[i], color='red',label='Real Data Example')
+    plt.plot(x[i], y[i], color='red',label='Real Data Example')
     plt.xlabel('Voltage')
     plt.ylabel('Frequency ')
     plt.title('Generated Synthetic Data')
