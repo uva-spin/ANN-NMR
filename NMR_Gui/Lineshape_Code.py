@@ -14,9 +14,16 @@ import matplotlib.pyplot as plt
 import statistics as std
 import tensorflow as tf
 from tensorflow import keras
+import pandas as pd
 from tensorflow.python.keras.models import load_model
 
-
+def choose_random_row(csv_file):
+    df = csv_file
+    if df.empty:
+        return None  # If the DataFrame is empty
+    random_index = np.random.randint(0, len(df))  # Generate a random index
+    random_row = df.iloc[random_index]  # Get the row at the random index
+    return random_row
 
 
 class Config():
@@ -37,14 +44,12 @@ class Config():
         scansize: sweep size
         ranger: range covered
 
-        Backgmd: background simulation data
-        Backreal: real background part simulation
         Current: baseline current simulation
 
         Other constants: g, s, bigy
     '''
 
-    def __init__(self, params, k_range, f_input, scansize, ranger, backgmd, backreal, current):
+    def __init__(self, params, k_range, f_input, scansize, ranger, current,noise):
 
         self.circ_consts = (3*10**(-8),0.35,619,50,10,0.0343,4.752*10**(-9),50,1.027*10**(-10),2.542*10**(-7),0,0,0,0)
 
@@ -83,8 +88,7 @@ class Config():
         # self.main_sig = main_sig
         # self.deriv_sig = deriv_sig
         self.current_sig = current
-        self.backgmd_sig = backgmd
-        self.backreal_sig = backreal
+        self.noise_df = noise
  
 class Simulate():
 
@@ -148,6 +152,9 @@ class Simulate():
             output.append((func(input)).real)
         return output
     
+    def Baseline_Polynomial_Curve(self,w):
+        return -1.84153246e-07*w**2 + 8.42855076e-05*w - 1.11342243e-04
+
     def LabviewCalculateYArray(self, main_sig,circ_params, scansize, k_range, ranger, f_input):
         
         #---------------------preamble----------------
@@ -189,9 +196,7 @@ class Simulate():
         k_range = k_range
         rangesize = ranger
 
-        backreal_sig = self.Inputs.backreal_sig
         current_sig = self.Inputs.current_sig
-        backgmd_sig = self.Inputs.backgmd_sig
         # main_sig = self.Inputs.main_sig
         # deriv_sig = self.Inputs.deriv_sig
         
@@ -276,23 +281,25 @@ class Simulate():
         vreal = []    
         Icoil = []
         
-        for item in main_sig:
-            butxi.append(item)
-        for item in main_sig:
-            butxii.append(item)
-        for item in backgmd_sig:
-            vback.append(item)
-        for item in backreal_sig:
-            vreal.append(item)
+        # for item in main_sig:
+        #     butxi.append(item)
+        # for item in main_sig:
+        #     butxii.append(item)
+        # for item in backgmd_sig:
+        #     vback.append(item)
+        # for item in backreal_sig:
+        #     vreal.append(item)
         for item in current_sig:
             Icoil.append(item)
         
-        x1 = interpolate.interp1d(x,butxi,fill_value=0.0,bounds_error=False)
-        x2 = interpolate.interp1d(x,butxii,fill_value=0.0,bounds_error=False)
+        # x1 = interpolate.interp1d(x,butxi,fill_value=0.0,bounds_error=False)
+        # x2 = interpolate.interp1d(x,butxii,fill_value=0.0,bounds_error=False)
         # b = interpolate.interp1d(x,vback,fill_value="extrapolate",kind="quadratic",bounds_error=False)
         # rb = interpolate.interp1d(x,vreal,fill_value="extrapolate",kind="quadratic",bounds_error=False)
         ic = interpolate.interp1d(x,Icoil,fill_value="extrapolate",kind="linear",bounds_error=False)
-        
+        x1 = Simulate.Baseline_Polynomial_Curve
+        x2 = Simulate.Baseline_Polynomial_Curve
+
         def chi(w):
             return complex(x1(w),-1*x2(w))
 
@@ -401,7 +408,7 @@ class Simulate():
     def icurve(self,x,eps):
         return Simulate.mult_term(self,x,eps)*(2*Simulate.cosaltwo(self,x,eps)*Simulate.termone(self,x,eps)+Simulate.sinaltwo(self,x,eps)*Simulate.termtwo(self,x,eps))
     
-    def Lineshape(self,P, circ_params, f_input, scan_s, ranger, k_range):
+    def Lineshape(self,P, circ_params, f_input, scan_s, ranger, k_range,noise_df):
         xvals = np.linspace(-6,6,500)
         yvals = Simulate.icurve(self,xvals,1)/10
         yvals2 = Simulate.icurve(self,-xvals,1)/10
@@ -426,9 +433,7 @@ class Simulate():
         lineshape = Simulate.LabviewCalculateYArray(self,signal,circ_params,scan_s,k_range,ranger,f_input)
         offset = [x - max(lineshape) for x in lineshape]
         offset = np.array(offset)
-        noisey = max(list(map(abs, offset)))/2.5
-        fluc = noisey*.1
-        noise = np.random.normal(noisey,fluc,500)
+        noise = choose_random_row(noise_df)
         sig = offset + noise
         return sig
 

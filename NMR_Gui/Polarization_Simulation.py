@@ -8,7 +8,7 @@ from Lineshape_Code import *
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras.models import load_model
-
+from scipy.stats import zscore
 ###Circuit Parameters###
 P = .5
 U = 0.1
@@ -22,11 +22,27 @@ circ_params = (U,Cknob,cable,eta,phi,Cstray)
 function_input = 32000000
 scan_s = .25
 ranger = 0
-Backgmd = np.loadtxt('Backgmd.dat', unpack = True)
-Backreal = np.loadtxt('Backreal.dat', unpack = True)
 Current = np.loadtxt('New_Current.csv', unpack = True)
 
-testmodel = tf.keras.models.load_model(r'trained_model_1M_v5.h5')
+testmodel = tf.keras.models.load_model(r'trained_model_1M_v5.h5', custom_objects={'loss': tf.keras.losses.MeanSquaredError(reduction=tf.keras.losses.Reduction.NONE)})
+
+
+df_rawsignal_noise = pd.read_csv(r"C:\Work\ANN\Noise_RawSignal.csv",header=None)
+df_rawsignal_noise = df_rawsignal_noise.drop([0],axis=1)
+
+def exclude_outliers(df, threshold=2):
+    # Compute Z-scores for each row
+    z_scores = df.apply(zscore, axis=0, result_type='broadcast')
+    
+    # Check if any Z-score exceeds the threshold
+    is_outlier = (z_scores.abs() > threshold).any(axis=1)
+    
+    # Exclude outliers
+    df_filtered = df[~is_outlier].apply(lambda x: x / 1000)
+    
+    return df_filtered
+
+df_filtered = exclude_outliers(df_rawsignal_noise)
 
 
 
@@ -43,6 +59,7 @@ class Parameters():
     function_input = function_input
     scan_s = scan_s
     ranger = ranger
+    noise_df = df_filtered
 
 class Polarization_Predicted():
     P_Pred = P
@@ -75,7 +92,7 @@ def Update_Polarization_Callback(p_pred):
 
 
 def update_data():
-    Inputs = Simulate(Config(Parameters.circ_params,Parameters.k_range,Parameters.function_input,Parameters.scan_s, Parameters.ranger, Backgmd, Backreal, Current))
+    Inputs = Simulate(Config(Parameters.circ_params,Parameters.k_range,Parameters.function_input,Parameters.scan_s, Parameters.ranger, Current,df_filtered))
     while True:
 
         data_x = Inputs.LabviewCalculateXArray((Parameters.U,Parameters.Cknob,Parameters.cable,Parameters.eta,Parameters.phi,Parameters.Cstray),Parameters.scan_s,Parameters.k_range,Parameters.ranger,Parameters.function_input)
