@@ -8,8 +8,8 @@ testmodel = tf.keras.models.load_model(r'C:\Users\Devin\Desktop\Spin Physics Wor
 
 
 def Predict(X,Polarization):
-    #X = np.array(X)
     acc = []
+    X.to_numpy()
     X = np.reshape(X,(1,500))
     Y = testmodel.predict(X)
     Y = Y.reshape((len(Y),))

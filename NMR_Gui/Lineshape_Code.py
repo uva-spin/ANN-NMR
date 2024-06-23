@@ -17,6 +17,9 @@ from tensorflow import keras
 import pandas as pd
 from tensorflow.python.keras.models import load_model
 
+Current = np.loadtxt(r'J:\Users\Devin\Desktop\Spin Physics Work\Deuteron\New_Current.csv', unpack = True)
+
+
 def choose_random_row(csv_file):
     df = csv_file
     if df.empty:
@@ -24,6 +27,19 @@ def choose_random_row(csv_file):
     random_index = np.random.randint(0, len(df))  # Generate a random index
     random_row = df.iloc[random_index]  # Get the row at the random index
     return random_row
+
+def Sinusoidal_Noise(shape):
+    # Generate an array of random angles between 0 and 2*pi
+    angles = np.random.uniform(0, 2*np.pi, shape)
+    
+    # Calculate cosine and sine of each angle
+    cos_values = np.random.uniform(-0.005,0.005)*np.cos(angles)
+    sin_values = np.random.uniform(-0.005,0.005)*np.sin(angles)
+    
+    # Sum cosine and sine
+    result = cos_values + sin_values
+    
+    return result
 
 
 class Config():
@@ -152,10 +168,10 @@ class Simulate():
             output.append((func(input)).real)
         return output
     
-    def Baseline_Polynomial_Curve(self,w):
+    def Baseline_Polynomial_Curve(w):
         return -1.84153246e-07*w**2 + 8.42855076e-05*w - 1.11342243e-04
 
-    def LabviewCalculateYArray(self, main_sig,circ_params, scansize, k_range, ranger, f_input):
+    def LabviewCalculateYArray(self, circ_params,f_input, scansize, current_sig, k_range,rangesize):
         
         #---------------------preamble----------------
         
@@ -191,10 +207,6 @@ class Simulate():
         eta = circ_params[3]
         phi_const = circ_params[4]
         Cstray = circ_params[5]
-
-        scansize = scansize
-        k_range = k_range
-        rangesize = ranger
 
         current_sig = self.Inputs.current_sig
         # main_sig = self.Inputs.main_sig
@@ -409,18 +421,32 @@ class Simulate():
         return Simulate.mult_term(self,x,eps)*(2*Simulate.cosaltwo(self,x,eps)*Simulate.termone(self,x,eps)+Simulate.sinaltwo(self,x,eps)*Simulate.termtwo(self,x,eps))
     
     def Lineshape(self,P, circ_params, f_input, scan_s, ranger, k_range,noise_df):
-        xvals = np.linspace(-6,6,500)
-        yvals = Simulate.icurve(self,xvals,1)/10
-        yvals2 = Simulate.icurve(self,-xvals,1)/10
+        # xvals = np.linspace(-6,6,500)
+        # yvals = Simulate.icurve(self,xvals,1)/10
+        # yvals2 = Simulate.icurve(self,-xvals,1)/10
 
         center = 250
         length = range(500)
         norm_array = []
         for x in length:
             norm_array = np.append(norm_array,(x - center)*(12/500))  
-        Iplus = Simulate.icurve(self,norm_array,1)
-        Iminus = Simulate.icurve(self,norm_array,-1)
-        ratio = Iminus/Iplus
+        # Iplus = Simulate.icurve(self,norm_array,1)
+        # Iminus = Simulate.icurve(self,norm_array,-1)
+        # ratio = Iminus/Iplus
+        # r = (np.sqrt(4-3*P**(2))+P)/(2-2*P)
+        # Iminus = Simulate.icurve(self,norm_array,-1)
+        # array = r*Iminus
+        # array_flipped = np.flip(array)
+        # element_1 = array_flipped+Iminus
+        # sum_array = np.sum(array_flipped)*(12/500)
+        # element_2 = 1/sum_array
+        # element_3 = P
+        # signal = element_1*element_2*element_3
+        # lineshape = Simulate.LabviewCalculateYArray(self,signal,circ_params,scan_s,k_range,ranger,f_input)
+        # offset = [x - max(lineshape) for x in lineshape]
+        # offset = np.array(offset)
+        # noise = choose_random_row(noise_df)
+        # sig = offset + noise
         r = (np.sqrt(4-3*P**(2))+P)/(2-2*P)
         Iminus = Simulate.icurve(self,norm_array,-1)
         array = r*Iminus
@@ -429,11 +455,16 @@ class Simulate():
         sum_array = np.sum(array_flipped)*(12/500)
         element_2 = 1/sum_array
         element_3 = P
-        signal = element_1*element_2*element_3
-        lineshape = Simulate.LabviewCalculateYArray(self,signal,circ_params,scan_s,k_range,ranger,f_input)
-        offset = [x - max(lineshape) for x in lineshape]
-        offset = np.array(offset)
+        signal = -element_1*element_2*element_3/1000
+        baseline = Simulate.LabviewCalculateYArray(self,circ_params, f_input, scan_s, Current, k_range,ranger)
+        shape = np.array(signal) + np.array(baseline)
+        offset = np.array([x - min(shape) for x in shape])
         noise = choose_random_row(noise_df)
+        # noise = np.zeros(500)
+        amplitude_shift = np.ones(500,)
+        sinusoidal_shift = Sinusoidal_Noise(500,)
+        sig = offset + noise + np.multiply(amplitude_shift,np.random.uniform(-0.01,0.01)) + sinusoidal_shift
+        # sig = offset + noise + np.multiply(amplitude_shift,np.random.uniform(-0.01,0.01))
         sig = offset + noise
         return sig
 

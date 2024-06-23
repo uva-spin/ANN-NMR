@@ -27,7 +27,7 @@ Current = np.loadtxt('New_Current.csv', unpack = True)
 testmodel = tf.keras.models.load_model(r'trained_model_1M_v5.h5', custom_objects={'loss': tf.keras.losses.MeanSquaredError(reduction=tf.keras.losses.Reduction.NONE)})
 
 
-df_rawsignal_noise = pd.read_csv(r"C:\Work\ANN\Noise_RawSignal.csv",header=None)
+df_rawsignal_noise = pd.read_csv(r"J:\Users\Devin\Desktop\Spin Physics Work\ANN Github\NMR-Fermilab\Noise_RawSignal.csv",header=None)
 df_rawsignal_noise = df_rawsignal_noise.drop([0],axis=1)
 
 def exclude_outliers(df, threshold=2):
@@ -96,10 +96,8 @@ def update_data():
     while True:
 
         data_x = Inputs.LabviewCalculateXArray((Parameters.U,Parameters.Cknob,Parameters.cable,Parameters.eta,Parameters.phi,Parameters.Cstray),Parameters.scan_s,Parameters.k_range,Parameters.ranger,Parameters.function_input)
-        data_y = Inputs.Lineshape(Parameters.P,(Parameters.U,Parameters.Cknob,Parameters.cable,Parameters.eta,Parameters.phi,Parameters.Cstray),Parameters.function_input,Parameters.scan_s, Parameters.ranger,Parameters.k_range)
-
-        
-        p, p_pred, result_new, result_pred_new = Predict(data_y, Parameters.P, testmodel)
+        data_y = Inputs.Lineshape(Parameters.P,(Parameters.U,Parameters.Cknob,Parameters.cable,Parameters.eta,Parameters.phi,Parameters.Cstray),Parameters.function_input,Parameters.scan_s, Parameters.ranger,Parameters.k_range,df_filtered)
+        p, p_pred, result_new, result_pred_new = Predict(data_y.to_numpy(), Parameters.P, testmodel)
 
         # data_y_pred =Inputs.Lineshape(p_pred,(Parameters.U,Parameters.Cknob,Parameters.cable,Parameters.eta,Parameters.phi,Parameters.Cstray),Parameters.function_input,Parameters.scan_s, Parameters.ranger,Parameters.k_range)\
         
