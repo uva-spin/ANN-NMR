@@ -30,7 +30,7 @@ def read_latest_row_in_real_time(file_path, interval=1):
                 # Update the last row count
                 last_row_count = current_row_count
                 
-                return latest_row
+                return latest_row.pop(0)
             
             # Wait for the specified interval before checking again
             time.sleep(interval)
