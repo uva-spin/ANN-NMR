@@ -30,10 +30,10 @@ function_input = 32000000
 scan_s = .25
 ranger = 0
 # ---- Data Files ---- #
-Backgmd = np.loadtxt(r'J:\Users\Devin\Desktop\Spin Physics Work\ANN Github\NMR-Fermilab\ANN-NMR\NN_Latest\data\Backgmd.dat', unpack = True)
-Backreal = np.loadtxt(r'J:\Users\Devin\Desktop\Spin Physics Work\ANN Github\NMR-Fermilab\ANN-NMR\NN_Latest\data\Backreal.dat', unpack = True)
-Current = np.loadtxt(r'J:\Users\Devin\Desktop\Spin Physics Work\Deuteron\New_Current.csv', unpack = True)
-df_rawsignal_noise = pd.read_csv(r"J:\Users\Devin\Desktop\Spin Physics Work\ANN Github\NMR-Fermilab\ANN-NMR\NN_Latest\noise-20240527T224337Z-001\noise\2024-05-24_16h12m33s-RawSignal.csv",header=None)
+# Backgmd = np.loadtxt(r'J:\Users\Devin\Desktop\Spin Physics Work\ANN Github\NMR-Fermilab\ANN-NMR\NN_Latest\data\Backgmd.dat', unpack = True)
+# Backreal = np.loadtxt(r'J:\Users\Devin\Desktop\Spin Physics Work\ANN Github\NMR-Fermilab\ANN-NMR\NN_Latest\data\Backreal.dat', unpack = True)
+Current = np.loadtxt(r'C:\Work\ANN\ANN-NMR\NM4-Fermilab\data\New_Current.csv', unpack = True)
+df_rawsignal_noise = pd.read_csv(r"C:\Work\ANN\Noise_RawSignal.csv",header=None)
 df_rawsignal_noise = df_rawsignal_noise.drop([0],axis=1)
 
 def choose_random_row(csv_file):
@@ -44,7 +44,7 @@ def choose_random_row(csv_file):
     random_row = df.iloc[random_index]  # Get the row at the random index
     return random_row
 
-def exclude_outliers(df, threshold=2):
+def exclude_outliers(df, threshold=1.5):
     # Compute Z-scores for each row
     z_scores = df.apply(zscore, axis=0, result_type='broadcast')
     
@@ -52,7 +52,8 @@ def exclude_outliers(df, threshold=2):
     is_outlier = (z_scores.abs() > threshold).any(axis=1)
     
     # Exclude outliers
-    df_filtered = df[~is_outlier].apply(lambda x: x / 1000)
+    df_filtered = df[~is_outlier]
+    # df_filtered = df[~is_outlier].apply(lambda x: x / 1000)
     
     return df_filtered
 
@@ -76,6 +77,7 @@ def Sinusoidal_Noise(shape):
     return result
 
 df_filtered = exclude_outliers(df_rawsignal_noise)
+print(len(df_filtered))
 
 
 def LabviewCalculateXArray(f_input, scansize, rangesize):
@@ -228,28 +230,12 @@ def LabviewCalculateYArray(circ_consts, params, f_input, scansize, current_sig, 
     k = np.array(k_ints,float)
     x = (k*delta_w)+(w_low)
     Icoil_TE = 0.11133
-    
-    # butxi = []
-    # butxii = []
-    # vback = []
-    # vreal = []    
+
     Icoil = []
-    
-    # for item in deriv_sig:
-    #     butxi.append(item)
-    # for item in main_sig:
-    #     butxii.append(item)
-    # for item in backgmd_sig:
-    #     vback.append(item)
-    # for item in backreal_sig:
-    #     vreal.append(item)
+
     for item in current_sig:
         Icoil.append(item)
     
-    # x1 = interpolate.interp1d(x,butxi,fill_value=0.0,bounds_error=False)
-    # x2 = interpolate.interp1d(x,butxii,fill_value=0.0,bounds_error=False)
-    # b = interpolate.interp1d(x,vback,fill_value="extrapolate",kind="quadratic",bounds_error=False)
-    # rb = interpolate.interp1d(x,vreal,fill_value="extrapolate",kind="quadratic",bounds_error=False)
     ic = interpolate.interp1d(x,Icoil,fill_value="extrapolate",kind="linear",bounds_error=False)
     x1 = Baseline_Polynomial_Curve
     x2 = Baseline_Polynomial_Curve
@@ -386,11 +372,12 @@ R_arr = []
 P_arr = []
 SNR_arr = []
 U = 0.1
-for x in range(0,10):
+for x in range(0,50):
     P = np.random.uniform(0,1)
     # Cknob = 0.180 + np.random.uniform(-.07,.07)
     # Cknob = .01522 + np.random.uniform(-.5,.5)
-    Cknob = 1.38 + np.random.uniform(-.5,.5)
+    # Cknob = 1.03 + np.random.uniform(-.5,.5)
+    Cknob = .232 
     cable = 23/2
     eta = 0.0104
     phi = 6.1319
@@ -404,17 +391,19 @@ for x in range(0,10):
     sum_array = np.sum(array_flipped)*(12/500)
     element_2 = 1/sum_array
     element_3 = P
-    signal = element_1*element_2*element_3/1000
-    baseline = LabviewCalculateYArray(circ_constants, circ_params, function_input, scan_s, Current, ranger)
-    shape = np.array(signal) + np.array(baseline)
-    # shape = np.array(baseline)
-    offset = np.array([x - min(shape) for x in shape])/200
+    signal = -element_1*element_2*element_3/10
+    # baseline = LabviewCalculateYArray(circ_constants, circ_params, function_input, scan_s, Current, ranger)
     noise = choose_random_row(df_filtered)
+    # shape = (np.array(signal) + np.array(baseline)) - noise
+    shape = np.array(signal) + noise
+    # shape = np.array(baseline)
+    offset = np.array([x - min(shape) for x in shape])
     # noise = np.zeros(500)
     amplitude_shift = np.ones(500,)
     # sinusoidal_shift = Sinusoidal_Noise(500,)
     # sig = offset + noise + np.multiply(amplitude_shift,np.random.uniform(-0.01,0.01)) + sinusoidal_shift
-    sig = offset + noise 
+    # sig = offset + noise
+    sig = offset 
     x_sig = max(list(map(abs, shape)))
     y_sig = max(list(map(abs,noise)))
     SNR = (x_sig/y_sig)

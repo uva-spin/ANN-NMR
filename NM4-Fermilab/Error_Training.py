@@ -20,12 +20,6 @@ import datetime
 
 df = pd.read_csv('/project/ptgroup/Devin/Neural_Network/Testing_Data_v5/Sample_Data_1M.csv') # This data will be 500 bins, P, SNR, relative error, and absolute error
 
-#relative error
-# absolute error / true value * 100%
-
-## Absolute error
-# True value - Predicted value * 100
-
 def split_data(X, y, split=0.1):
     temp = np.random.choice(list(range(len(y))), size=int(len(y)*split), replace=False)
     

@@ -18,157 +18,166 @@ from scipy import interpolate
 import cmath
 import statistics as std
 
-testmodel = tf.keras.models.load_model('/project/ptgroup/Devin/Neural_Network/Trained_Models_v14/trained_model_1M_v3_tuned.h5')
+Polarization_Model = tf.keras.models.load_model('/project/ptgroup/Devin/Neural_Network/Trained_Models_v14/trained_model_1M_v3_tuned.h5')
 
-df = pd.read_csv('Testing_Data_v4/Sample_Data_50K.csv')
+df_Pol = pd.read_csv('Testing_Data_v4/Sample_Data_50K.csv')
+df_Err = pd.read_csv('Blahblahblahblahblahblahbl')
 
-y = df['P']
-x = df.drop(['P'],axis=1)
-# train_X, test_X, train_y, test_y = split_data(x,y)
 
-X = df.drop(['P','SNR'],axis=1)
-Y = testmodel.predict(X)
-P = np.array(df['P'])
-SNR = np.array(df['SNR'])
-Y = Y.reshape((len(Y),))
+### Predicted Polarization
+y_Pol = df_Pol['P']
+x_Pol = df_Pol.drop(['P'],axis=1)
+X_Pol = df_Pol.drop(['P','SNR'],axis=1)
+Y_Pol = Polarization_Model.predict(X_Pol)
+P = np.array(df_Pol['P'])
+SNR = np.array(df_Pol['SNR'])
+Y_Pol = Y_Pol.reshape((len(Y_Pol),))
 
-err = ((P-Y)/(P))*100
-# plt.scatter(len(err),err)
-# plt.savefig('Accuracy.png')
-result = pd.DataFrame(Y, columns ={'P'})
-result = result.rename(columns={df.columns[0]:'P'},inplace=False)
+### Predicted Errors
+y_Err = df_Err['Rel','Abs']
+# x_Err = df_Err.drop(['P','Rel','Abs','SNR'],axis=1)
+X_Err = df_Err.drop(['P','Rel','Abs','SNR'],axis=1)
+Y_Rel,Y_Abs = Polarization_Model.predict(X_Pol)
+rel_err = np.array(df_Pol['P'])
+SNR = np.array(df_Pol['SNR'])
+Y_Pol = Y_Pol.reshape((len(Y_Pol),))
+
+rel_err = (np.abs((Y_Pol-P))/(P))*100
+abs_err = np.abs(Y_Pol-P)
+result = pd.DataFrame(Y_Pol, columns ={'P'})
+result = result.rename(columns={df_Pol.columns[0]:'P'},inplace=False)
 result['P_True'] = P.tolist()
-result['err'] = err.tolist()
-# plt.plot(np.arange(len(result['P_True'])),result['P_True'],'.',label = 'True')
+result['rel_err'] = rel_err.tolist()
+result['abs_err'] = abs_err.tolist()
 result.to_csv('Results.csv')
 
 # ### Plotting ###
 
-g = 0.05
-s = 0.04
-bigy=(3-s)**0.5
-labelfontsize = 30
+# g = 0.05
+# s = 0.04
+# bigy=(3-s)**0.5
+# labelfontsize = 30
 
-def cosal(x,eps):
-    return (1-eps*x-s)/bigxsquare(x,eps)
-
-
-def c(x):
-    return ((g**2+(1-x-s)**2)**0.5)**0.5
+# def cosal(x,eps):
+#     return (1-eps*x-s)/bigxsquare(x,eps)
 
 
-def bigxsquare(x,eps):
-    return (g**2+(1-eps*x-s)**2)**0.5
+# def c(x):
+#     return ((g**2+(1-x-s)**2)**0.5)**0.5
 
 
-def mult_term(x,eps):
-    return float(1)/(2*np.pi*np.sqrt(bigxsquare(x,eps)))
+# def bigxsquare(x,eps):
+#     return (g**2+(1-eps*x-s)**2)**0.5
 
 
-def cosaltwo(x,eps):
-    return ((1+cosal(x,eps))/2)**0.5
+# def mult_term(x,eps):
+#     return float(1)/(2*np.pi*np.sqrt(bigxsquare(x,eps)))
 
 
-def sinaltwo(x,eps):
-    return ((1-cosal(x,eps))/2)**0.5
+# def cosaltwo(x,eps):
+#     return ((1+cosal(x,eps))/2)**0.5
 
 
-def termone(x,eps):
-    return np.pi/2+np.arctan((bigy**2-bigxsquare(x,eps))/((2*bigy*(bigxsquare(x,eps))**0.5)*sinaltwo(x,eps)))
+# def sinaltwo(x,eps):
+#     return ((1-cosal(x,eps))/2)**0.5
 
 
-def termtwo(x,eps):
-    return np.log((bigy**2+bigxsquare(x,eps)+2*bigy*(bigxsquare(x,eps)**0.5)*cosaltwo(x,eps))/(bigy**2+bigxsquare(x,eps)-2*bigy*(bigxsquare(x,eps)**0.5)*cosaltwo(x,eps)))
-
-def icurve(x,eps):
-    return mult_term(x,eps)*(2*cosaltwo(x,eps)*termone(x,eps)+sinaltwo(x,eps)*termtwo(x,eps))
-
-xvals = np.linspace(-6,6,500)
-yvals = icurve(xvals,1)/10
-yvals2 = icurve(-xvals,1)/10
-x_arr = np.linspace(31.5,32.5,500)
+# def termone(x,eps):
+#     return np.pi/2+np.arctan((bigy**2-bigxsquare(x,eps))/((2*bigy*(bigxsquare(x,eps))**0.5)*sinaltwo(x,eps)))
 
 
-###Circuit Parameters###
-U = 0.1
-# Cknob = 0.125
-Cknob = .120
-cable = 23/2
-eta = 0.0104
-phi = 6.1319
-Cstray = 10**(-15)
+# def termtwo(x,eps):
+#     return np.log((bigy**2+bigxsquare(x,eps)+2*bigy*(bigxsquare(x,eps)**0.5)*cosaltwo(x,eps))/(bigy**2+bigxsquare(x,eps)-2*bigy*(bigxsquare(x,eps)**0.5)*cosaltwo(x,eps)))
 
-k_range = 5000
-circ_constants = (3*10**(-8),0.35,619,50,10,0.0343,4.752*10**(-9),50,1.027*10**(-10),2.542*10**(-7),0,0,0,0) ### Don't change these, these are constants of the Liverpool
-circ_params = (U,Cknob,cable,eta,phi,Cstray)
-function_input = 32000000
-# function_input = 213000000
-scan_s = .25
-ranger = 0
+# def icurve(x,eps):
+#     return mult_term(x,eps)*(2*cosaltwo(x,eps)*termone(x,eps)+sinaltwo(x,eps)*termtwo(x,eps))
+
+# xvals = np.linspace(-6,6,500)
+# yvals = icurve(xvals,1)/10
+# yvals2 = icurve(-xvals,1)/10
+# x_arr = np.linspace(31.5,32.5,500)
+
+
+# ###Circuit Parameters###
+# U = 0.1
+# # Cknob = 0.125
+# Cknob = .120
+# cable = 23/2
+# eta = 0.0104
+# phi = 6.1319
+# Cstray = 10**(-15)
+
+# k_range = 5000
+# circ_constants = (3*10**(-8),0.35,619,50,10,0.0343,4.752*10**(-9),50,1.027*10**(-10),2.542*10**(-7),0,0,0,0) ### Don't change these, these are constants of the Liverpool
+# circ_params = (U,Cknob,cable,eta,phi,Cstray)
+# function_input = 32000000
+# # function_input = 213000000
+# scan_s = .25
+# ranger = 0
 
 
     
 
-def cosal(x,eps):
-    return (1-eps*x-s)/bigxsquare(x,eps)
+# def cosal(x,eps):
+#     return (1-eps*x-s)/bigxsquare(x,eps)
 
 
-def c(x):
-    return ((g**2+(1-x-s)**2)**0.5)**0.5
+# def c(x):
+#     return ((g**2+(1-x-s)**2)**0.5)**0.5
 
 
-def bigxsquare(x,eps):
-    return (g**2+(1-eps*x-s)**2)**0.5
+# def bigxsquare(x,eps):
+#     return (g**2+(1-eps*x-s)**2)**0.5
 
 
-def mult_term(x,eps):
-    return float(1)/(2*np.pi*np.sqrt(bigxsquare(x,eps)))
+# def mult_term(x,eps):
+#     return float(1)/(2*np.pi*np.sqrt(bigxsquare(x,eps)))
 
 
-def cosaltwo(x,eps):
-    return ((1+cosal(x,eps))/2)**0.5
+# def cosaltwo(x,eps):
+#     return ((1+cosal(x,eps))/2)**0.5
 
 
-def sinaltwo(x,eps):
-    return ((1-cosal(x,eps))/2)**0.5
+# def sinaltwo(x,eps):
+#     return ((1-cosal(x,eps))/2)**0.5
 
 
-def termone(x,eps):
-    return np.pi/2+np.arctan((bigy**2-bigxsquare(x,eps))/((2*bigy*(bigxsquare(x,eps))**0.5)*sinaltwo(x,eps)))
+# def termone(x,eps):
+#     return np.pi/2+np.arctan((bigy**2-bigxsquare(x,eps))/((2*bigy*(bigxsquare(x,eps))**0.5)*sinaltwo(x,eps)))
 
 
-def termtwo(x,eps):
-    return np.log((bigy**2+bigxsquare(x,eps)+2*bigy*(bigxsquare(x,eps)**0.5)*cosaltwo(x,eps))/(bigy**2+bigxsquare(x,eps)-2*bigy*(bigxsquare(x,eps)**0.5)*cosaltwo(x,eps)))
+# def termtwo(x,eps):
+#     return np.log((bigy**2+bigxsquare(x,eps)+2*bigy*(bigxsquare(x,eps)**0.5)*cosaltwo(x,eps))/(bigy**2+bigxsquare(x,eps)-2*bigy*(bigxsquare(x,eps)**0.5)*cosaltwo(x,eps)))
 
-def icurve(x,eps):
-    return mult_term(x,eps)*(2*cosaltwo(x,eps)*termone(x,eps)+sinaltwo(x,eps)*termtwo(x,eps))
+# def icurve(x,eps):
+#     return mult_term(x,eps)*(2*cosaltwo(x,eps)*termone(x,eps)+sinaltwo(x,eps)*termtwo(x,eps))
 
-### All simulation above, can just ignore
+# ### All simulation above, can just ignore
 
-xvals = np.linspace(-6,6,500)
-yvals = icurve(xvals,1)/10
-yvals2 = icurve(-xvals,1)/10
-center = 250
-length = range(500)
-norm_array = []
-for x in length:
-    norm_array = np.append(norm_array,(x - center)*(12/500))  
-Iplus = icurve(norm_array,1)
-Iminus = icurve(norm_array,-1)
+# xvals = np.linspace(-6,6,500)
+# yvals = icurve(xvals,1)/10
+# yvals2 = icurve(-xvals,1)/10
+# center = 250
+# length = range(500)
+# norm_array = []
+# for x in length:
+#     norm_array = np.append(norm_array,(x - center)*(12/500))  
+# Iplus = icurve(norm_array,1)
+# Iminus = icurve(norm_array,-1)
 
 result['P_diff'] = result['P'] - result['P_True']
-x = np.array(result['P_diff'])*100
-np.savetxt("Histogram_Data_v3.csv",x,delimiter = ',') ### This saves the relative difference to a .csv file
+x_Pol = np.array(result['P_diff'])*100
+np.savetxt("Histogram_Data_v3.csv",x_Pol,delimiter = ',') ### This saves the relative difference to a .csv file
 
 
 num_bins = 100
    
-n, bins, patches = plt.hist(x, num_bins, 
+n, bins, patches = plt.hist(x_Pol, num_bins, 
                             density = True, 
                             color ='green',
                             alpha = 0.7)
    
-(mu, sigma) = norm.fit(x)
+(mu, sigma) = norm.fit(x_Pol)
 
 ### Plot Histogram of Percentage Difference
 
@@ -187,16 +196,16 @@ n, bins, patches = plt.hist(x, num_bins,
   
 # plt.savefig('Trained_Models_v14/Histogram_1M_v3.png')
 
-plt.figure()
-plt.plot(result['P_True'],result['err'], '.')
-plt.xlabel('Polarization')
-plt.ylabel('Relative Percent Error (%)')
-plt.savefig('Accuracy_Plot.pdf')
+# plt.figure()
+# plt.plot(result['P_True'],result['err'], '.')
+# plt.xlabel('Polarization')
+# plt.ylabel('Relative Percent Error (%)')
+# plt.savefig('Accuracy_Plot.pdf')
 
 
-acc = []
-f_1 = []
-f_2 = []
+# acc = []
+# f_1 = []
+# f_2 = []
 # for i in range(0,200):
 #     p = P[i]
 #     p_pred = Y[i]
