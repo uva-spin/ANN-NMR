@@ -2,7 +2,13 @@ import pandas as pd
 import numpy as np
 import random
 
-def GenerateLineshape(P,background):
+
+### Global Variables
+g = 0.05
+s = 0.04
+bigy=(3-s)**0.5
+
+def GenerateLineshape(P):
     
     def cosal(x,eps):
         return (1-eps*x-s)/bigxsquare(x,eps)
@@ -61,5 +67,4 @@ def GenerateLineshape(P,background):
     element_2 = 1/sum_array
     element_3 = P
     signal = element_1*element_2*element_3
-    result = signal + background
-    return result, P
+    return signal
