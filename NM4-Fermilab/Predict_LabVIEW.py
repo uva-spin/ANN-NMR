@@ -2,12 +2,12 @@ import numpy as np
 import tensorflow as tf
 
 
-### Load in models outside of function. This improves speed when implemented in LabVIEW
+def Predict_P_and_Error(Polarization_Model_Path, Error_Model_Path, Array):
 
-Polarization_Model = tf.keras.models.load_model('/project/ptgroup/Devin/Neural_Network/Trained_Models_v14/trained_model_1M_v3_tuned.h5')
-Error_Model = tf.keras.models.load_model('bloblhoashdoud')
+    ### Load in models outside of function. This improves speed when implemented in LabVIEW
 
-def Predict_P_and_Error(Array):
+    Polarization_Model = tf.keras.models.load_model(Polarization_Model_Path)
+    Error_Model = tf.keras.models.load_model(Error_Model_Path)
 
     ### Predicts Polarization, Relative Error, and Absolute Error. Defined in function in order to implement in LabVIEW.
 
