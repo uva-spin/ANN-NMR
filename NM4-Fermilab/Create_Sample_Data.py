@@ -21,7 +21,8 @@ U = 0.1
 for x in range(0,10):
     P = np.random.uniform(0,1)
     # Cknob = 0.180 + np.random.uniform(-.07,.07)
-    Cknob = .66 
+    # Cknob = .64 
+    Cknob = .042
     cable = 22/2
     eta = 0.0104
     phi = 6.1319
@@ -29,9 +30,10 @@ for x in range(0,10):
     circ_params = (U,Cknob,cable,eta,phi,Cstray)
     noise = choose_random_row(df_filtered)
     lineshape = GenerateLineshape(P)
-    baseline = LabviewCalculateYArray(circ_constants, circ_params, function_input, scan_s, lineshape, Current, ranger)
+    proton = voigt_profile(np.linspace(-1,1,500),.01,.0)
+    baseline = LabviewCalculateYArray(circ_constants, circ_params, function_input, scan_s, proton, Current, ranger,)
     # shape = (np.array(signal) + np.array(baseline)) - noise
-    signal = baseline 
+    signal = baseline
     offset = np.array([x - max(signal) for x in signal])
     # noise = np.zeros(500)
     amplitude_shift = np.ones(500,)

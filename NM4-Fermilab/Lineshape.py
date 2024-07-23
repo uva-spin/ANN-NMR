@@ -1,9 +1,8 @@
 import numpy as np
 from scipy import interpolate
 import cmath
-g = 0.05
-s = 0.04
-bigy=(3-s)**0.5
+from scipy.special import voigt_profile
+from Variables import *
 
 def LabviewCalculateXArray(f_input, scansize, rangesize):
     

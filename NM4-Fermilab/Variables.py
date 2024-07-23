@@ -20,7 +20,7 @@ circ_params = (U,Cknob,cable,eta,phi,Cstray)
 function_input = 32000000
 # function_input = 213000000
 scan_s = .25
-ranger = 0
+ranger = 1
 # ---- Data Files ---- #
 Current = np.loadtxt(r'data/New_Current.csv', unpack = True)
 df_rawsignal_noise = pd.read_csv(r"J:\Users\Devin\Desktop\Spin Physics Work\ANN Github\NMR-Fermilab\Noise_RawSignal.csv",header=None)
