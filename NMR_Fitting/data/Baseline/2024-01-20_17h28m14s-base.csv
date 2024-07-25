@@ -1,0 +1,2 @@
+EventNum,Polarization,Area,CalConst,Baseline,QMeterNum,QMeterName,MagCurrent,EIPFreq,HPFreq,uWaveFreq,uWavePower,FMAmplitude,FMOffset,ScanSweeps,ScanSteps,ScanFreq,RFFreq,RFMod,RFPower,YaleGain,DCLevel,He3Press,He3Temp,He4Temp,He4Press,SepFlow,MainFlow,MagLevel,RFVolts,LN2Level,VacPress,Comment,TopChip,BottomChip,CarbonGlass,Collector
+1705792702,,,-2.377120E+0,0,4,Top Proton,0.000000,,,,,,,100,500,15287,213.000,400,275,1,,,,NaN,,,,,,,,,,,,

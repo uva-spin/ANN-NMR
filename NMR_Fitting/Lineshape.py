@@ -4,6 +4,13 @@ import cmath
 from scipy.special import voigt_profile
 from Variables import *
 
+circ_consts = (3*10**(-8),0.35,619,50,10,0.0343,4.752*10**(-9),50,1.027*10**(-10),2.542*10**(-7),0,0,0,0)
+
+def Voigt(w, ampG1, cenG1, sigmaG1, ampL1, cenL1, widL1):
+    return (ampG1*(1/(sigmaG1*(np.sqrt(2*np.pi))))*(np.exp(-((w-cenG1)**2)/((2*sigmaG1)**2)))) +\
+              ((ampL1*widL1**2/((w-cenL1)**2+widL1**2)) )
+
+
 def LabviewCalculateXArray(f_input, scansize, rangesize):
     
     #---------------------preamble----------------
@@ -47,7 +54,7 @@ def getArrayFromFunc(func,inputs):
         output.append((func(input)).real)
     return output
 
-def Signal(circ_consts, params, f_input, scansize, mu,gam, rangesize):
+def Signal(w, U,knob, ampG1, cenG1, sigmaG1, ampL1, cenL1, widL1):
     
     #---------------------preamble----------------
     
@@ -75,8 +82,8 @@ def Signal(circ_consts, params, f_input, scansize, mu,gam, rangesize):
     
     f = f_input
     
-    U = params[0]
-    knob = params[1]
+    # U = params[0]
+    # knob = params[1]
     trim = params[2]
     eta = params[3]
     phi_const = params[4]
@@ -120,17 +127,23 @@ def Signal(circ_consts, params, f_input, scansize, mu,gam, rangesize):
 
     def Z0(w):
         return cmath.sqrt( (S + w*M*im_unit) / (w*D*im_unit))
+    
+    Z0 = np.vectorize(Z0)
 
     def beta(w):
         return beta1*w
 
     def gamma(w):
         return complex(alpha,beta(w))
+    
+    gamma = np.vectorize(gamma)
 
     def ZC(w):
         if  w != 0 and C(w) != 0:
             return 1/(im_unit*w*C(w))
         return 1
+    
+    ZC = np.vectorize(ZC)
   
     #More derived quantities
     vel = 1/beta(1)
@@ -167,19 +180,21 @@ def Signal(circ_consts, params, f_input, scansize, mu,gam, rangesize):
     # x2 = interpolate.interp1d(x,signal,fill_value=0.0,bounds_error=False)
     # x1 = np.array(voigt_profile(np.linspace(-1,1,500),mu,gamma),dtype = float)
     # x2 = np.array(voigt_profile(np.linspace(-1,1,500),mu,gamma),dtype = float)
-    x_values = np.linspace(-1, 1, 500).astype(np.float64)
-    signal = voigt_profile(x_values, mu,gam)
-    x1 = x2 = interpolate.interp1d(x,signal,fill_value=0.0,bounds_error=False)
-
+    # x_values = np.linspace(-1, 1, 500).astype(np.float64)
+    # signal = voigt_profile(x_values, mu,gam)
+    # x1 = x2 = interpolate.interp1d(x,signal,fill_value=0.0,bounds_error=False)
+    x1 = x2 = Voigt
     
-    def chi(w):
-        return complex(x1(w),-1*x2(w))
+    def chi(w,ampG1, cenG1, sigmaG1, ampL1, cenL1, widL1):
+        return complex(x1(w,ampG1, cenG1, sigmaG1, ampL1, cenL1, widL1),-1*x2(w,ampG1, cenG1, sigmaG1, ampL1, cenL1, widL1))
+    
+    chi = np.vectorize(chi)
 
     def pt(w):
         return ic(w)/Icoil_TE
 
-    def L(w):
-        return L0*(1+(sign*4*pi*eta*pt(w)*chi(w)))
+    def L(w,ampG1, cenG1, sigmaG1, ampL1, cenL1, widL1):
+        return L0*(1+(sign*4*pi*eta*pt(w)*chi(w,ampG1, cenG1, sigmaG1, ampL1, cenL1, widL1)))
 
     def real_L(w):
         return L(w).real
@@ -187,26 +202,30 @@ def Signal(circ_consts, params, f_input, scansize, mu,gam, rangesize):
     def imag_L(w):
         return L(w).imag
 
-    def ZLpure(w):
-        return im_unit*w*L(w) + Rcoil
+    def ZLpure(w,ampG1, cenG1, sigmaG1, ampL1, cenL1, widL1):
+        return im_unit*w*L(w,ampG1, cenG1, sigmaG1, ampL1, cenL1, widL1) + Rcoil
 
     def Zstray(w):
         if w != 0 and Cstray !=0:
             return 1/(im_unit*w*Cstray)
         return 1
+    
+    Zstray = np.vectorize(Zstray)
 
-    def ZL(w):
-        return ZLpure(w)*Zstray(w)/(ZLpure(w)+Zstray(w))
+    def ZL(w,ampG1, cenG1, sigmaG1, ampL1, cenL1, widL1):
+        return ZLpure(w,ampG1, cenG1, sigmaG1, ampL1, cenL1, widL1)*Zstray(w)/(ZLpure(w,ampG1, cenG1, sigmaG1, ampL1, cenL1, widL1)+Zstray(w))
 
-    def ZT(w):
-        return Z0(w)*(ZL(w) + Z0(w)*np.tanh(gamma(w)*l(w)))/(Z0(w) + ZL(w)*np.tanh(gamma(w)*l(w)))
+    def ZT(w,ampG1, cenG1, sigmaG1, ampL1, cenL1, widL1):
+        return Z0(w)*(ZL(w,ampG1, cenG1, sigmaG1, ampL1, cenL1, widL1) 
+        + Z0(w)*np.tanh(gamma(w)*l(w)))/(Z0(w) + 
+        ZL(w,ampG1, cenG1, sigmaG1, ampL1, cenL1, widL1)*np.tanh(gamma(w)*l(w)))
 
 
-    def Zleg1(w):
-        return r + ZC(w) + ZT(w)
+    def Zleg1(w,ampG1, cenG1, sigmaG1, ampL1, cenL1, widL1):
+        return r + ZC(w) + ZT(w,ampG1, cenG1, sigmaG1, ampL1, cenL1, widL1)
 
-    def Ztotal(w):
-        return R1 / (1 + (R1 / Zleg1(w)) )
+    def Ztotal(w,ampG1, cenG1, sigmaG1, ampL1, cenL1, widL1):
+        return R1 / (1 + (R1 / Zleg1(w,ampG1, cenG1, sigmaG1, ampL1, cenL1, widL1)) )
 
     #Adding parabolic term
 
@@ -237,8 +256,8 @@ def Signal(circ_consts, params, f_input, scansize, mu,gam, rangesize):
     def phi(w):
         return phi_trim(w) + phi_const
 
-    def V_out(w):
-        return -1*(I*Ztotal(w)*np.exp(im_unit*phi(w)*pi/180))
+    def V_out(w,ampG1, cenG1, sigmaG1, ampL1, cenL1, widL1):
+        return -1*(I*Ztotal(w,ampG1, cenG1, sigmaG1, ampL1, cenL1, widL1)*np.exp(im_unit*phi(w)*pi/180))
 
     
     larger_k = range(0,k_range)
@@ -246,10 +265,10 @@ def Signal(circ_consts, params, f_input, scansize, mu,gam, rangesize):
     w_range = w_high - w_low
     larger_range = (delta_w*larger_x)+(w_low-5*w_range)
     
-    out_y = getArrayFromFunc(V_out,x)
+    out_y = V_out(w,ampG1, cenG1, sigmaG1, ampL1, cenL1, widL1)
     if (rangesize == 1):
-        out_y = getArrayFromFunc(V_out,larger_range)
-    return out_y
+        out_y = V_out(w,ampG1, cenG1, sigmaG1, ampL1, cenL1, widL1)
+    return out_y.real
 
 def GenerateLineshape(P):
     

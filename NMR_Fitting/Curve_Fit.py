@@ -2,11 +2,32 @@ from Variables import *
 from Lineshape import *
 import pandas as pd
 import numpy as np
-from lmfit import Model
+import scipy as scipy
+from scipy import optimize
+import matplotlib.pyplot as plt
 
-x = np.linspace(210,216,500)
 # circ_params = (U,Cknob,cable,eta,phi,Cstray)
 
-mod = Model(LabviewCalculateYArray(circ_constants, circ_params, function_input, scan_s, .1, 0., ranger))
+baseline = pd.read_csv(r"data/2024-02-06_21h17m32s-RawSignal.csv")
+baseline = baseline.iloc[:,1:]
+test = baseline.iloc[7]
+x_array  = np.linspace(209.13,215.13,500)
 
-params = mod.make_params(circ_params,mu = .1, gamma = 0.)
+U = 0.1
+Cknob = .042
+ampG1 = 20
+cenG1 = 50
+sigmaG1 = 5
+ampL1 = 80
+cenL1 = 50
+widL1 = 5
+
+plt.plot(x_array,test)
+plt.show()
+
+
+popt_baseline_voigt, pcov_baseline_voigt = scipy.optimize.curve_fit(Signal, x_array, test)
+
+perr_1voigt = np.sqrt(np.diag(pcov_baseline_voigt))
+
+print(popt_baseline_voigt)

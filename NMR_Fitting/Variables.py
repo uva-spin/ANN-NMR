@@ -15,12 +15,12 @@ phi = 6.1319
 Cstray = 10**(-15)
 
 k_range = 500
-circ_constants = (3*10**(-8),0.35,619,50,10,0.0343,4.752*10**(-9),50,1.027*10**(-10),2.542*10**(-7),0,0,0,0)
-circ_params = (U,Cknob,cable,eta,phi,Cstray)
+circ_consts = (3*10**(-8),0.35,619,50,10,0.0343,4.752*10**(-9),50,1.027*10**(-10),2.542*10**(-7),0,0,0,0)
+params = (U,Cknob,cable,eta,phi,Cstray)
 # function_input = 32000000
-function_input = 213000000
-scan_s = .25
-ranger = 1
+f_input = 213000000
+scansize = .25
+rangesize = 1
 # ---- Data Files ---- #
 current_sig = np.loadtxt(r'data/New_Current.csv', unpack = True)
 df_rawsignal_noise = pd.read_csv(r"J:\Users\Devin\Desktop\Spin Physics Work\ANN Github\NMR-Fermilab\Noise_RawSignal.csv",header=None)
