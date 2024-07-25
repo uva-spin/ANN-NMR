@@ -47,7 +47,7 @@ def getArrayFromFunc(func,inputs):
         output.append((func(input)).real)
     return output
 
-def Signal(circ_consts, params, f_input, scansize, mu,gam, rangesize):
+def Signal(circ_consts, params, f_input, scansize, signal, rangesize):
     
     #---------------------preamble----------------
     
@@ -163,13 +163,13 @@ def Signal(circ_consts, params, f_input, scansize, mu,gam, rangesize):
     ic = interpolate.interp1d(x,Icoil,fill_value="extrapolate",kind="linear",bounds_error=False)
     # x1 = Baseline_Polynomial_Curve
     # x2 = Baseline_Polynomial_Curve
-    # x1 = interpolate.interp1d(x,signal,fill_value=0.0,bounds_error=False)
-    # x2 = interpolate.interp1d(x,signal,fill_value=0.0,bounds_error=False)
+    x1 = interpolate.interp1d(x,signal,fill_value=0.0,bounds_error=False)
+    x2 = interpolate.interp1d(x,signal,fill_value=0.0,bounds_error=False)
     # x1 = np.array(voigt_profile(np.linspace(-1,1,500),mu,gamma),dtype = float)
     # x2 = np.array(voigt_profile(np.linspace(-1,1,500),mu,gamma),dtype = float)
-    x_values = np.linspace(-1, 1, 500).astype(np.float64)
-    signal = voigt_profile(x_values, mu,gam)
-    x1 = x2 = interpolate.interp1d(x,signal,fill_value=0.0,bounds_error=False)
+    # x_values = np.linspace(-1, 1, 500).astype(np.float64)
+    # signal = voigt_profile(x_values, mu,gam)
+    # x1 = x2 = interpolate.interp1d(x,signal,fill_value=0.0,bounds_error=False)
 
     
     def chi(w):

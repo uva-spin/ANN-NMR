@@ -33,7 +33,7 @@ for x in range(0,10):
     noise = choose_random_row(df_filtered)
     lineshape = GenerateLineshape(P)
     # proton = voigt_profile(np.linspace(-1,1,500),.01,.0)
-    signal = Signal(circ_constants, circ_params, function_input, scan_s, mu,gam, ranger)
+    signal = Signal(circ_constants, circ_params, function_input, scan_s, signal, ranger)
     # shape = (np.array(signal) + np.array(baseline)) - noise
     # signal = baseline
     offset = np.array([x - max(signal) for x in signal])
