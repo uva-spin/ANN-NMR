@@ -265,7 +265,7 @@ def Signal(w, knob,  ampG1, sigmaG1, ampL1, widL1, center):
     offset = np.array([x - max(out_y.real) for x in out_y.real])
     return offset.real
 
-def Baseline(w,knob, sigma, gamma, center=0):
+def Baseline(w,knob):
     
     #---------------------preamble----------------
 
@@ -308,7 +308,8 @@ def Baseline(w,knob, sigma, gamma, center=0):
     w_res = 2*pi*f
     w_low = 2 * pi * (213 - scansize) * (1e6)
     w_high = 2 * pi * (213 + scansize) * (1e6)
-    delta_w = 2 * pi * 500 * ((1e3)/500)
+    delta_w = 2 * pi * 500 * ((1e3) / 500)
+    # delta_w = ( 2 * pi  * 1e3 * (w_high - w_low) )
 
     
     #Functions
@@ -379,7 +380,7 @@ def Baseline(w,knob, sigma, gamma, center=0):
     #Variables for creating splines
     # k_ints = range(0,500)
     # k = np.array(k_ints,float)
-    x = (w*delta_w)+(w_low)
+    x = (w*delta_w)+(w_low) ### This needs to be modified in order to obtain correct magnitude
     Icoil_TE = 0.11133
 
     
