@@ -41,3 +41,17 @@ def Sinusoidal_Noise(shape):
     result = cos_values + sin_values
     
     return result
+
+def apply_distortion(signal, alpha):
+    """
+    Apply cubic non-linear distortion to the input signal.
+    
+    Parameters:
+    signal (numpy array): The original signal.
+    alpha (float): The distortion parameter.
+    
+    Returns:
+    numpy array: The distorted signal.
+    """
+    distorted_signal = signal + alpha * np.power(signal, 3)
+    return distorted_signal

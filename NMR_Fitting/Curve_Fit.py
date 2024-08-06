@@ -5,29 +5,54 @@ import numpy as np
 import scipy as scipy
 from scipy import optimize
 import matplotlib.pyplot as plt
+cable = 22/2
+circ_params = (U,Cknob,cable,eta,phi,Cstray)
 
-# circ_params = (U,Cknob,cable,eta,phi,Cstray)
 
-baseline = pd.read_csv(r"data/2024-02-06_21h17m32s-RawSignal.csv")
-baseline = baseline.iloc[:,1:]
-test = baseline.iloc[7]
-x_array  = np.linspace(209.13,215.13,500)
+baseline = pd.read_csv(r"data\Baseline\2024-06-25_18h44m37s-base-RawSignal.csv",header=None)
+baseline = baseline.iloc[0,1:].tolist()
+test = baseline
 
-U = 0.1
-Cknob = .042
-ampG1 = 20
-cenG1 = 50
-sigmaG1 = 5
-ampL1 = 80
-cenL1 = 50
-widL1 = 5
+x_array = np.linspace(209,216,500)
 
-plt.plot(x_array,test)
+# signal = Baseline(x_array,.8,1.,1.,213)
+
+# plt.plot(x_array,signal)
+# plt.show()
+
+Cknob = 0.73302
+sigma = 1.
+gamma = 1.
+center = 213
+
+
+
+initial_guess = [Cknob, sigma,gamma,center]
+lower_bounds = [ .68, .9,.9,212]
+upper_bounds = [.76, 1.,1.,214]
+
+
+# popt_baseline_voigt, pcov_baseline_voigt = scipy.optimize.curve_fit(
+#     Baseline, x_array, test, p0=initial_guess, bounds=(lower_bounds, upper_bounds), method = 'trf')
+
+# perr_1voigt = np.sqrt(np.diag(pcov_baseline_voigt))
+
+# print(popt_baseline_voigt)
+
+# cap = np.linspace(.05,.7,30)
+# sig = []
+# for i in cap:
+#     sig.append(Baseline(x_array,i,1.,1.,213))
+
+# plt.figure()
+# for ele in sig:
+#     plt.plot(x_array,ele)
+# plt.show()
+
+signal = Baseline(x_array,0.73302,1.,1.,213)
+
+plt.plot(x_array,signal,label = "Simulation")
+plt.plot(x_array,test, label = "Experiment")
+plt.legend()
 plt.show()
 
-
-popt_baseline_voigt, pcov_baseline_voigt = scipy.optimize.curve_fit(Signal, x_array, test)
-
-perr_1voigt = np.sqrt(np.diag(pcov_baseline_voigt))
-
-print(popt_baseline_voigt)
