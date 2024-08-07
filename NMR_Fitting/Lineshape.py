@@ -265,7 +265,7 @@ def Signal(w, knob,  ampG1, sigmaG1, ampL1, widL1, center):
     offset = np.array([x - max(out_y.real) for x in out_y.real])
     return offset.real
 
-def Baseline(w,knob):
+def Baseline(w,U,knob,trim,eta,phi_const,Cstray):
     
     #---------------------preamble----------------
 
@@ -295,12 +295,12 @@ def Baseline(w,knob):
     
     f = function_input
     
-    U = params[0]
+    # U = params[0] ## Fit this 50mV - 150mV 
     # knob = params[1]
-    trim = params[2]
-    eta = params[3]
-    phi_const = params[4]
-    Cstray = params[5]
+    # trim = params[2]
+    # eta = params[3] ## 
+    # phi_const = params[4] 
+    # Cstray = params[5] ## Fit this
     
     I = U*1000/R #Ideal constant current, mA
 
@@ -308,8 +308,8 @@ def Baseline(w,knob):
     w_res = 2*pi*f
     w_low = 2 * pi * (213 - scansize) * (1e6)
     w_high = 2 * pi * (213 + scansize) * (1e6)
-    delta_w = 2 * pi * 500 * ((1e3) / 500)
-    # delta_w = ( 2 * pi  * 1e3 * (w_high - w_low) )
+    delta_w = 2 * pi * 500 * ((1e6) / 500)
+    # delta_w = ( 2* pi * (w_high - w_low) ) * ((1e3) / 500 * 1e6) * 500
 
     
     #Functions

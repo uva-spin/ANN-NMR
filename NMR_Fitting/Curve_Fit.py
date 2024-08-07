@@ -5,6 +5,7 @@ import numpy as np
 import scipy as scipy
 from scipy import optimize
 import matplotlib.pyplot as plt
+from iminuit import Minuit
 cable = 22/2
 circ_params = (U,Cknob,cable,eta,phi,Cstray)
 
@@ -13,7 +14,7 @@ baseline = pd.read_csv(r"data\Baseline\2024-06-25_18h44m37s-base-RawSignal.csv",
 baseline = baseline.iloc[0,1:].tolist()
 test = baseline
 
-x_array = np.linspace(209,214,500)
+x_array = np.linspace(0,500,500)
 
 # signal = Baseline(x_array,.8,1.,1.,213)
 
@@ -36,12 +37,12 @@ lower_bounds = [ .3]
 upper_bounds = [2]
 
 
-popt_baseline_voigt, pcov_baseline_voigt = scipy.optimize.curve_fit(
-    Baseline, x_array, test, p0=initial_guess, bounds=(lower_bounds, upper_bounds), method = 'trf')
+# popt_baseline_voigt, pcov_baseline_voigt = scipy.optimize.curve_fit(
+#     Baseline, x_array, test, p0=initial_guess, bounds=(lower_bounds, upper_bounds), method = 'trf')
 
-perr_1voigt = np.sqrt(np.diag(pcov_baseline_voigt))
+# perr_1voigt = np.sqrt(np.diag(pcov_baseline_voigt))
 
-print(popt_baseline_voigt)
+# print(popt_baseline_voigt)
 
 # cap = np.linspace(.05,.7,30)
 # sig = []
@@ -54,7 +55,13 @@ print(popt_baseline_voigt)
 # plt.show()
 
 # signal = Baseline(x_array,0.73302)
-signal = Baseline(x_array,0.7335583)
+U = 1
+knob = 1
+trim = 1
+eta = 1
+phi_const = 1
+Cstray = 1
+signal = Baseline(x_array,U,knob,trim,eta,phi_const,Cstray)
 plt.plot(x_array,signal,label = "Simulation")
 # plt.plot(x_array,test, label = "Experiment")
 plt.legend()
