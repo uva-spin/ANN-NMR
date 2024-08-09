@@ -265,7 +265,7 @@ def Signal(w, knob,  ampG1, sigmaG1, ampL1, widL1, center):
     offset = np.array([x - max(out_y.real) for x in out_y.real])
     return offset.real
 
-def Baseline(w,U,knob,trim,eta,phi_const,Cstray):
+def Baseline(w,U,Cknob,eta,trim,Cstray,phi_const):
     
     #---------------------preamble----------------
 
@@ -301,6 +301,7 @@ def Baseline(w,U,knob,trim,eta,phi_const,Cstray):
     # eta = params[3] ## 
     # phi_const = params[4] 
     # Cstray = params[5] ## Fit this
+    shift = params[6]
     
     I = U*1000/R #Ideal constant current, mA
 
@@ -308,8 +309,7 @@ def Baseline(w,U,knob,trim,eta,phi_const,Cstray):
     w_res = 2*pi*f
     w_low = 2 * pi * (213 - scansize) * (1e6)
     w_high = 2 * pi * (213 + scansize) * (1e6)
-    delta_w = 2 * pi * 500 * ((1e6) / 500)
-    # delta_w = ( 2* pi * (w_high - w_low) ) * ((1e3) / 500 * 1e6) * 500
+    delta_w = 2 * pi * (4) * ((1e6) / 500)
 
     
     #Functions
@@ -323,7 +323,7 @@ def Baseline(w,U,knob,trim,eta,phi_const,Cstray):
         return slope()*(w - w_res)
 
     def Cmain():
-        return 20*(1e-12)*knob
+        return 20*(1e-12)*Cknob
 
     def C(w):
         return Cmain() + Ctrim(w)*(1e-12)
@@ -373,13 +373,7 @@ def Baseline(w,U,knob,trim,eta,phi_const,Cstray):
     #Even more functions
     def l(w):
         return l_const + delta_l
-        
- 
-        
     
-    #Variables for creating splines
-    # k_ints = range(0,500)
-    # k = np.array(k_ints,float)
     x = (w*delta_w)+(w_low) ### This needs to be modified in order to obtain correct magnitude
     Icoil_TE = 0.11133
 
@@ -467,16 +461,11 @@ def Baseline(w,U,knob,trim,eta,phi_const,Cstray):
         return -1*(I*Ztotal(w)*np.exp(im_unit*phi(w)*pi/180))
 
     
-    # larger_k = range(0,k_range)
-    # larger_x = np.array(larger_k, float)
-    # w_range = w_high - w_low
-    # larger_range = (delta_w*larger_x)+(w_low-5*w_range)
-    
     out_y = V_out(x)
     if (rangesize == 1):
         out_y = V_out(x)
 
-    offset = np.array([x - max(out_y.real) for x in out_y.real])
+    offset = np.array([x - min(out_y.real) for x in out_y.real]) + np.full((500,),shift)
     return offset.real
 
 
