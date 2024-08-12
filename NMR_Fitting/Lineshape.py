@@ -3,7 +3,7 @@ from scipy import interpolate
 import cmath
 from scipy.special import voigt_profile
 from scipy.special import wofz
-from Variables import *
+from NMR_Fitting.Variables import *
 
 
 def Voigt(x, ampG1, sigmaG1, ampL1, widL1, center):
@@ -54,7 +54,7 @@ def getArrayFromFunc(func,inputs):
         output.append((func(input)).real)
     return output
 
-def Signal(w, knob,  ampG1, sigmaG1, ampL1, widL1, center):
+def Signal(w, U, knob, eta, Cstray, ampG1, sigmaG1, ampL1, widL1, center):
     
     #---------------------preamble----------------
 
@@ -84,12 +84,12 @@ def Signal(w, knob,  ampG1, sigmaG1, ampL1, widL1, center):
     
     f = function_input
     
-    U = params[0]
+    # U = params[0]
     # knob = params[1]
     trim = params[2]
-    eta = params[3]
+    # eta = params[3]
     phi_const = params[4]
-    Cstray = params[5]
+    # Cstray = params[5]
     
     I = U*1000/R #Ideal constant current, mA
 
@@ -166,16 +166,18 @@ def Signal(w, knob,  ampG1, sigmaG1, ampL1, widL1, center):
         
     
     #Variables for creating splines
-    k_ints = range(0,500)
-    k = np.array(k_ints,float)
-    x = (k*delta_w)+(w_low)
+    x = (w*delta_w)+(w_low)
     Icoil_TE = 0.11133
 
     
     def ic(w):
         return 1.113325582555695081e-01
     
-    x1 = x2 = Voigt(x,ampG1, sigmaG1, ampL1, widL1, center)
+    def x1(x):
+        return Voigt(x,ampG1, sigmaG1, ampL1, widL1, center)
+    
+    def x2(x):
+        return Voigt(x,ampG1, sigmaG1, ampL1, widL1, center)
 
     
     def chi(w):
