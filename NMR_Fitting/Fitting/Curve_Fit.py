@@ -84,43 +84,43 @@ Cstray = 10**(-15)
 
 #--------Signal Stuf----------#
 
-signal = pd.read_csv(r"data\2024-02-06_21h17m32s-RawSignal.csv")
-signal = signal.iloc[0,1:].tolist()
+# signal = pd.read_csv(r"data\2024-02-06_21h17m32s-RawSignal.csv")
+# signal = signal.iloc[0,1:].tolist()
 
-U = 2.4283e1
-Cknob = 2.4842e-1
-eta = 0.0104
-cable = 22 / 2
-phi = 6.1319
-Cstray = 10**(-15)
+# U = 2.4283e1
+# Cknob = 2.4842e-1
+# eta = 0.0104
+# cable = 22 / 2
+# phi = 6.1319
+# Cstray = 10**(-15)
 
-ampG1 = .005
-sigmaG1 = .005
-ampL1  = .005
-widL1 = .005
-center = 213
+# ampG1 = .005
+# sigmaG1 = .005
+# ampL1  = .005
+# widL1 = .005
+# center = 213
 
-initial_guess = [U,Cknob,eta,Cstray,ampG1,sigmaG1,ampL1,widL1,center]
+# initial_guess = [U,Cknob,eta,Cstray,ampG1,sigmaG1,ampL1,widL1,center]
 
-popt, pcov = scipy.optimize.curve_fit(
-    Signal, x_array, signal, p0=initial_guess, method='trf'
-)
+# popt, pcov = scipy.optimize.curve_fit(
+#     Signal, x_array, signal, p0=initial_guess, method='trf'
+# )
 
-# Calculate the standard deviation errors for the parameters
-perr = np.sqrt(np.diag(pcov))
+# # Calculate the standard deviation errors for the parameters
+# perr = np.sqrt(np.diag(pcov))
 
-# Print the optimized parameters and covariance matrix
-print("Optimized parameters:", popt)
-print("Covariance matrix:\n", pcov)
+# # Print the optimized parameters and covariance matrix
+# print("Optimized parameters:", popt)
+# print("Covariance matrix:\n", pcov)
 
-# Assign the fitted parameters to new variables
-fitted_U, fitted_Cknob, fitted_eta, fitted_Cstray, fitted_ampG1, fitted_sigmaG1, fitted_ampL1, fitted_widL1, fitted_center = popt
+# # Assign the fitted parameters to new variables
+# fitted_U, fitted_Cknob, fitted_eta, fitted_Cstray, fitted_ampG1, fitted_sigmaG1, fitted_ampL1, fitted_widL1, fitted_center = popt
 
-# Generate the simulated signal using the fitted parameters
-signal = Signal(x_array, fitted_U, fitted_Cknob, fitted_eta, fitted_Cstray,fitted_ampG1, fitted_sigmaG1, fitted_ampL1, fitted_widL1, fitted_center)
+# # Generate the simulated signal using the fitted parameters
+# signal = Signal(x_array, fitted_U, fitted_Cknob, fitted_eta, fitted_Cstray,fitted_ampG1, fitted_sigmaG1, fitted_ampL1, fitted_widL1, fitted_center)
 
 
 
-plt.plot(x_array,signal)
-plt.show()
+# plt.plot(x_array,signal)
+# plt.show()
 
