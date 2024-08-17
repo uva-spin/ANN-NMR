@@ -223,7 +223,8 @@ print_cov_matrix_with_param_names(pcov, param_names)
 
 # Plot the original data and the resulting fit function
 plt.errorbar(x_full_freq, y_full, yerr=yerr_full, fmt='o', markersize=1, label='Data', color='black')  # Plot full data range
-plt.plot(x_freq, Baseline(x_freq, *popt), label='Fit', color='red', linewidth=2)  # Fit for selected domain
+# plt.plot(x_freq, Baseline(x_freq, *popt), label='Fit', color='red', linewidth=2)  # Fit for selected domain
+plt.plot(x_freq, Baseline(x_freq, initial_params.keys()), label='Fit', color='red', linewidth=2)
 plt.xlabel('Frequency (MHz)')
 plt.ylabel('Dependent Variable')
 plt.legend()

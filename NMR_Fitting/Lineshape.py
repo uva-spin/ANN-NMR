@@ -166,7 +166,7 @@ def Signal(w, U, knob, eta, Cstray, ampG1, sigmaG1, ampL1, widL1, center):
         
     
     #Variables for creating splines
-    x = (w*delta_w)+(w_low)
+    x = (w*delta_w)
     Icoil_TE = 0.11133
 
     
@@ -311,7 +311,7 @@ def Baseline(w,U,Cknob,eta,trim,Cstray,phi_const):
     w_res = 2*pi*f
     w_low = 2 * pi * (213 - scansize) * (1e6)
     w_high = 2 * pi * (213 + scansize) * (1e6)
-    delta_w = 2 * pi * (4) * ((1e6) / 500)
+    delta_w = 2 * pi * (500) * ((1e6) / 500)
 
     
     #Functions
@@ -398,12 +398,6 @@ def Baseline(w,U,Cknob,eta,trim,Cstray,phi_const):
 
     def L(w):
         return L0*(1+(sign*4*pi*eta*pt(w)*chi(w)))
-
-    def real_L(w):
-        return L(w).real
-
-    def imag_L(w):
-        return L(w).imag
 
     def ZLpure(w):
         return im_unit*w*L(w) + Rcoil
