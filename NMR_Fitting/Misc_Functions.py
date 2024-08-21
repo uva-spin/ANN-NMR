@@ -1,6 +1,8 @@
 import numpy as np
 import random
 from scipy.stats import zscore
+import os
+import glob as glob
 
 def choose_random_row(csv_file):
     df = csv_file
@@ -55,3 +57,18 @@ def apply_distortion(signal, alpha):
     """
     distorted_signal = signal + alpha * np.power(signal, 3)
     return distorted_signal
+
+def find_file(filename, start_dir='.'):
+    current_dir = os.path.abspath(start_dir)
+    levels_up = 0
+    
+    while levels_up <= 2:  # Limit to two directory levels up
+        # Search in the current directory and its subdirectories
+        for file in glob.glob(os.path.join(current_dir, '**', filename), recursive=True):
+            return file
+        
+        # Move up one directory level
+        current_dir = os.path.abspath(os.path.join(current_dir, '..'))
+        levels_up += 1
+    
+    return None

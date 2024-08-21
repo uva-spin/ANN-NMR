@@ -3,7 +3,7 @@ from scipy import interpolate
 import cmath
 from scipy.special import voigt_profile
 from scipy.special import wofz
-from NMR_Fitting.Variables import *
+from Variables import *
 
 
 def Voigt(x, ampG1, sigmaG1, ampL1, widL1, center):
@@ -11,96 +11,27 @@ def Voigt(x, ampG1, sigmaG1, ampL1, widL1, center):
               ((ampL1*widL1**2/((x-center)**2+widL1**2)) )
 
 
-def Frequency(f_input, scansize, rangesize):
+def Proton(f, U, Cknob, eta, trim, Cstray, phi, DC_offset, ampG1, sigmaG1, ampL1, widL1, center):
     
-    #---------------------preamble----------------
-    
+    # Preamble
+    circ_consts = (3*10**(-8), 0.35, 619, 50, 10, 0.0343, 4.752*10**(-9), 50, 1.027*10**(-10), 2.542*10**(-7), 0, 0, 0, 0)
     pi = np.pi
-    im_unit = complex(0,1)
-
-    #----------------------main------------------
-    
-    
-    
-
-    #Derived quantities
-    w_res = 2*pi*f_input
-    f_small = f_input/(1e6)
-    w_low = 2 * pi * (f_small - scansize) * (1e6)
-    w_high = 2 * pi * (f_small + scansize) * (1e6)
-    delta_w = 2 * pi * 500 * ((1e3)/500)
-
-    
-    #Variables for creating splines
-    k_ints = range(0,500)
-    k = np.array(k_ints,float)
-    x = (k*delta_w)+(w_low)
-    
-    larger_k = range(0,k_range)
-    larger_x = np.array(larger_k, float)
-    w_range = w_high - w_low
-    larger_range = (delta_w*larger_x)+(w_low-5*w_range)
-    larger_range /= (2 * pi)*(1e6)
-    
-    x /= (2*pi)*(1e6)
-    return_val = x
-    if (rangesize == 1):
-        return_val = larger_range
-    return return_val
-
-def getArrayFromFunc(func,inputs):
-    output = []
-    for input in inputs:
-        output.append((func(input)).real)
-    return output
-
-def Signal(w, U, knob, eta, Cstray, ampG1, sigmaG1, ampL1, widL1, center):
-    
-    #---------------------preamble----------------
-
-    circ_consts = (3*10**(-8),0.35,619,50,10,0.0343,4.752*10**(-9),50,1.027*10**(-10),2.542*10**(-7),0,0,0,0)
-    
-    pi = np.pi
-    im_unit = complex(0,1)
+    im_unit = 1j  # Use numpy's complex unit (1j)
     sign = 1
-    
-    #----------------------main------------------
 
-    L0 = circ_consts[0]
-    Rcoil = circ_consts[1]
-    R = circ_consts[2]
-    R1 = circ_consts[3]
-    r = circ_consts[4]
-    alpha = circ_consts[5]
-    beta1 = circ_consts[6]
-    Z_cable = circ_consts[7]
-    D = circ_consts[8]
-    M = circ_consts[9]
-    delta_C = circ_consts[10]
-    delta_phi = circ_consts[11]
-    delta_phase = circ_consts[12]
-    delta_l = circ_consts[13]
-    
-    
-    f = function_input
-    
-    # U = params[0]
-    # knob = params[1]
-    trim = params[2]
-    # eta = params[3]
-    phi_const = params[4]
-    # Cstray = params[5]
-    
-    I = U*1000/R #Ideal constant current, mA
+    # Main constants
+    L0, Rcoil, R, R1, r, alpha, beta1, Z_cable, D, M, delta_C, delta_phi, delta_phase, delta_l = circ_consts
 
-    #Derived quantities
-    w_res = 2*pi*f
-    w_low = 2 * pi * (213 - scansize) * (1e6)
-    w_high = 2 * pi * (213 + scansize) * (1e6)
-    delta_w = 2 * pi * 500 * ((1e3)/500)
+    I = U*1000/R  # Ideal constant current, mA
+    w_res = 2 * pi * 213e6
+    w_low = 2 * pi * (213 - 4) * 1e6
+    w_high = 2 * pi * (213 + 4) * 1e6
+    delta_w = 2 * pi * 4e6 / 500
 
-    
-    #Functions
+    # Convert frequency to angular frequency (rad/s)
+    w = 2 * pi * f * 1e6
+
+    # Functions
     def slope():
         return delta_C / (0.25 * 2 * pi * 1e6)
 
@@ -108,67 +39,37 @@ def Signal(w, U, knob, eta, Cstray, ampG1, sigmaG1, ampL1, widL1, center):
         return delta_phi / (0.25 * 2 * pi * 1e6)
 
     def Ctrim(w):
-        return slope()*(w - w_res)
+        return slope() * (w - w_res)
 
     def Cmain():
-        return 20*(1e-12)*knob
+        return 20 * 1e-12 * Cknob
 
     def C(w):
-        return Cmain() + Ctrim(w)*(1e-12)
-
-    def Cpf():
-        return C(w_res)*(1e12)
-    
-    
-    #--------------------Cable characteristics-------------
-
-
-    #Derived quantities
-    S = 2*Z_cable*alpha
-
-    #Functions
+        return Cmain() + Ctrim(w) * 1e-12
 
     def Z0(w):
-        return cmath.sqrt( (S + w*M*im_unit) / (w*D*im_unit))
-    
-    Z0 = np.vectorize(Z0)
+        S = 2 * Z_cable * alpha
+        with np.errstate(divide='ignore', invalid='ignore'):
+            result = np.sqrt((S + w * M * im_unit) / (w * D * im_unit))
+        return np.where(w == 0, 0, result)  # Avoid invalid values for w=0
 
     def beta(w):
-        return beta1*w
+        return beta1 * w
 
     def gamma(w):
-        return complex(alpha,beta(w))
-    
-    gamma = np.vectorize(gamma)
+        return alpha + beta(w) * 1j  # Create a complex number using numpy
 
     def ZC(w):
-        if  w != 0 and C(w) != 0:
-            return 1/(im_unit*w*C(w))
-        return 1
-    
-    ZC = np.vectorize(ZC)
-  
-    #More derived quantities
-    vel = 1/beta(1)
+        Cw = C(w)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            result = np.where(Cw != 0, 1 / (im_unit * w * Cw), 0)
+        return np.where(w == 0, 0, result)  # Avoid invalid values for w=0
 
-    #More functions
-    def lam(w):
-        return vel/f
-    
-    #Even more derived quantities
-    l_const = trim*lam(w_res)
+    def vel(w):
+        return 1 / beta(w)
 
-    #Even more functions
     def l(w):
-        return l_const + delta_l
-        
- 
-        
-    
-    #Variables for creating splines
-    x = (w*delta_w)
-    Icoil_TE = 0.11133
-
+        return trim * vel(w_res) + delta_l
     
     def ic(w):
         return 1.113325582555695081e-01
@@ -186,88 +87,174 @@ def Signal(w, U, knob, eta, Cstray, ampG1, sigmaG1, ampL1, widL1, center):
     chi = np.vectorize(chi)
 
     def pt(w):
-        return ic(w)/Icoil_TE
+        return ic(w)
 
     def L(w):
-        return L0*(1+(sign*4*pi*eta*pt(w)*chi(w)))
-
-    def real_L(w):
-        return L(w).real
-
-    def imag_L(w):
-        return L(w).imag
+        return L0 * (1 + sign * 4 * pi * eta * pt(w) * chi(w))
 
     def ZLpure(w):
-        return im_unit*w*L(w) + Rcoil
+        return im_unit * w * L(w) + Rcoil
 
     def Zstray(w):
-        if w != 0 and Cstray !=0:
-            return 1/(im_unit*w*Cstray)
-        return 1
-    
-    Zstray = np.vectorize(Zstray)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            result = np.where(Cstray != 0, 1 / (im_unit * w * Cstray), 0)
+        return np.where(w == 0, 0, result)  # Avoid invalid values for w=0
 
     def ZL(w):
-        return ZLpure(w)*Zstray(w)/(ZLpure(w)+Zstray(w))
+        return ZLpure(w) * Zstray(w) / (ZLpure(w) + Zstray(w))
 
     def ZT(w):
-        return Z0(w)*(ZL(w) 
-        + Z0(w)*np.tanh(gamma(w)*l(w)))/(Z0(w) + 
-        ZL(w)*np.tanh(gamma(w)*l(w)))
-
+        epsilon = 1e-10  # Small constant to avoid division by zero
+        return Z0(w) * (ZL(w) + Z0(w) * np.tanh(gamma(w) * l(w))) / (Z0(w) + ZL(w) * np.tanh(gamma(w) * l(w)) + epsilon)
 
     def Zleg1(w):
         return r + ZC(w) + ZT(w)
 
     def Ztotal(w):
-        return R1 / (1 + (R1 / Zleg1(w)) )
-
-    #Adding parabolic term
-
-    xp1 = w_low
-    xp2 = w_res
-    xp3 = w_high
-    yp1 = 0
-    yp2 = delta_phase
-    yp3 = 0
-
-    alpha_1 = yp1-yp2
-    alpha_2 = yp1-yp3
-    beta_1 = (xp1*xp1) - (xp2*xp2)
-    beta_2 = (xp1*xp1) - (xp3*xp3)
-    gamma_1 = xp1-xp2
-    gamma_2 = xp1-xp3
-    temp=(beta_1*(gamma_1/gamma_2) - beta_2)
-    a= (gamma_2 *(alpha_1/gamma_1) - alpha_2)/temp
-    bb = (alpha_2 - a*beta_2)/gamma_2
-    c = yp1 - a*xp1*xp1 - bb*xp1
+        return R1 / (1 + (R1 / Zleg1(w)))
 
     def parfaze(w):
-        return a*w*w + bb*w + c
+        yp1 = 0
+        yp2 = delta_phase
+        yp3 = 0
+
+        a = ((yp1 - yp2) * (w_low - w_high) - (yp1 - yp3) * (w_low - w_res)) / \
+            (((w_low ** 2) - (w_res ** 2)) * (w_low - w_high) - ((w_low ** 2) - (w_high ** 2)) * (w_low - w_res))
+        bb = (yp1 - yp3 - a * ((w_low ** 2) - (w_high ** 2))) / (w_low - w_high)
+        c = yp1 - a * (w_low ** 2) - bb * w_low
+        return a * w ** 2 + bb * w + c
 
     def phi_trim(w):
-        return slope_phi()*(w-w_res) + parfaze(w)
+        return slope_phi() * (w - w_res) + parfaze(w)
+
+    def phi(w):
+        return phi_trim(w) + phi
+
+    def V_out(w):
+        return -1 * (I * Ztotal(w) * np.exp(im_unit * phi(w) * pi / 180))
+
+    out_y = V_out(w)
+    offset = np.array([x - min(out_y.real) for x in out_y.real])
+    return offset.real + DC_offset
+
+def Baseline(f, U, Cknob, eta, trim, Cstray, phi_const, DC_offset):
+    # Preamble
+    circ_consts = (3*10**(-8), 0.35, 619, 50, 10, 0.0343, 4.752*10**(-9), 50, 1.027*10**(-10), 2.542*10**(-7), 0, 0, 0, 0)
+    pi = np.pi
+    im_unit = 1j  # Use numpy's complex unit (1j)
+    sign = 1
+
+    # Main constants
+    L0, Rcoil, R, R1, r, alpha, beta1, Z_cable, D, M, delta_C, delta_phi, delta_phase, delta_l = circ_consts
+
+    I = U*1000/R  # Ideal constant current, mA
+    w_res = 2 * pi * 213e6
+    w_low = 2 * pi * (213 - 4) * 1e6
+    w_high = 2 * pi * (213 + 4) * 1e6
+    delta_w = 2 * pi * 4e6 / 500
+
+    # Convert frequency to angular frequency (rad/s)
+    w = 2 * pi * f * 1e6
+
+    # Functions
+    def slope():
+        return delta_C / (0.25 * 2 * pi * 1e6)
+
+    def slope_phi():
+        return delta_phi / (0.25 * 2 * pi * 1e6)
+
+    def Ctrim(w):
+        return slope() * (w - w_res)
+
+    def Cmain():
+        return 20 * 1e-12 * Cknob
+
+    def C(w):
+        return Cmain() + Ctrim(w) * 1e-12
+
+    def Z0(w):
+        S = 2 * Z_cable * alpha
+        with np.errstate(divide='ignore', invalid='ignore'):
+            result = np.sqrt((S + w * M * im_unit) / (w * D * im_unit))
+        return np.where(w == 0, 0, result)  # Avoid invalid values for w=0
+
+    def beta(w):
+        return beta1 * w
+
+    def gamma(w):
+        return alpha + beta(w) * 1j  # Create a complex number using numpy
+
+    def ZC(w):
+        Cw = C(w)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            result = np.where(Cw != 0, 1 / (im_unit * w * Cw), 0)
+        return np.where(w == 0, 0, result)  # Avoid invalid values for w=0
+
+    def vel(w):
+        return 1 / beta(w)
+
+    def l(w):
+        return trim * vel(w_res) + delta_l
+
+    def ic(w):
+        return 1.113325582555695081e-01
+
+    def chi(w):
+        return np.zeros_like(w)  # Placeholder for x1(w) and x2(w)
+
+    def pt(w):
+        return ic(w)
+
+    def L(w):
+        return L0 * (1 + sign * 4 * pi * eta * pt(w) * chi(w))
+
+    def ZLpure(w):
+        return im_unit * w * L(w) + Rcoil
+
+    def Zstray(w):
+        with np.errstate(divide='ignore', invalid='ignore'):
+            result = np.where(Cstray != 0, 1 / (im_unit * w * Cstray), 0)
+        return np.where(w == 0, 0, result)  # Avoid invalid values for w=0
+
+    def ZL(w):
+        return ZLpure(w) * Zstray(w) / (ZLpure(w) + Zstray(w))
+
+    def ZT(w):
+        epsilon = 1e-10  # Small constant to avoid division by zero
+        return Z0(w) * (ZL(w) + Z0(w) * np.tanh(gamma(w) * l(w))) / (Z0(w) + ZL(w) * np.tanh(gamma(w) * l(w)) + epsilon)
+
+    def Zleg1(w):
+        return r + ZC(w) + ZT(w)
+
+    def Ztotal(w):
+        return R1 / (1 + (R1 / Zleg1(w)))
+
+    def parfaze(w):
+        xp1 = w_low
+        xp2 = w_res
+        xp3 = w_high
+        yp1 = 0
+        yp2 = delta_phase
+        yp3 = 0
+
+        a = ((yp1 - yp2) * (w_low - w_high) - (yp1 - yp3) * (w_low - w_res)) / \
+            (((w_low ** 2) - (w_res ** 2)) * (w_low - w_high) - ((w_low ** 2) - (w_high ** 2)) * (w_low - w_res))
+        bb = (yp1 - yp3 - a * ((w_low ** 2) - (w_high ** 2))) / (w_low - w_high)
+        c = yp1 - a * (w_low ** 2) - bb * w_low
+        return a * w ** 2 + bb * w + c
+
+    def phi_trim(w):
+        return slope_phi() * (w - w_res) + parfaze(w)
 
     def phi(w):
         return phi_trim(w) + phi_const
 
     def V_out(w):
-        return -1*(I*Ztotal(w)*np.exp(im_unit*phi(w)*pi/180))
+        return -1 * (I * Ztotal(w) * np.exp(im_unit * phi(w) * pi / 180))
 
-    
-    larger_k = range(0,k_range)
-    larger_x = np.array(larger_k, float)
-    w_range = w_high - w_low
-    larger_range = (delta_w*larger_x)+(w_low-5*w_range)
-    
-    out_y = V_out(x)
-    if (rangesize == 1):
-        out_y = V_out(x)
-
-    offset = np.array([x - max(out_y.real) for x in out_y.real])
-    return offset.real
-
-def Baseline(w,U,Cknob,eta,trim,Cstray,phi_const):
+    out_y = V_out(w)
+    offset = np.array([x - min(out_y.real) for x in out_y.real])
+    return offset.real + DC_offset
     
     #---------------------preamble----------------
 
