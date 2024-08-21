@@ -72,3 +72,21 @@ def find_file(filename, start_dir='.'):
         levels_up += 1
     
     return None
+
+# Function to print the covariance matrix with associated parameter names
+def print_cov_matrix_with_param_names(matrix, param_names):
+    # Print header with parameter names
+    print("Covariance Matrix (with parameter names):")
+    print(f"{'':>16}  " + "  ".join(f"{name:>16}" for name in param_names))
+    
+    # Print each row with the corresponding parameter name
+    for i, row in enumerate(matrix):
+        row_label = param_names[i]
+        formatted_row = "  ".join(f"{value:16.5e}" for value in row)
+        print(f"{row_label:>16}  {formatted_row}")
+
+# Function to print optimized parameters with their names
+def print_optimized_params_with_names(params, param_names):
+    print("Optimized Parameters:")
+    for name, param in zip(param_names, params):
+        print(f"{name:>16}: {param:16.5e}")
