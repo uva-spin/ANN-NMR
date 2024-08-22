@@ -43,7 +43,7 @@ def FrequencyBound(f):
     return x_full_freq 
 
 
-def Proton(f, U, Cknob, eta, trim, Cstray, phi, DC_offset, ampG1, sigmaG1, ampL1, widL1, center):
+def Proton(f, U, Cknob, eta, trim, Cstray, phi_const, DC_offset, sig, gam, center):
     
     # Preamble
     circ_consts = (3*10**(-8), 0.35, 619, 50, 10, 0.0343, 4.752*10**(-9), 50, 1.027*10**(-10), 2.542*10**(-7), 0, 0, 0, 0)
@@ -106,44 +106,44 @@ def Proton(f, U, Cknob, eta, trim, Cstray, phi, DC_offset, ampG1, sigmaG1, ampL1
     def ic(w):
         return 1.113325582555695081e-01
     
-    def x1(x):
-        return Voigt(x,ampG1, sigmaG1, ampL1, widL1, center)
+    def x1(x,sig, gam, center):
+        return Voigt(x, sig, gam, center)
     
-    def x2(x):
-        return Voigt(x,ampG1, sigmaG1, ampL1, widL1, center)
+    def x2(x,sig, gam, center):
+        return Voigt(x, sig, gam, center)
 
     
-    def chi(w):
-        return complex(x1(w),-1*x2(w))
+    def chi(w, sig, gam, center):
+        return complex(x1(w, sig, gam, center),-1*x2(w, sig, gam, center))
     
     chi = np.vectorize(chi)
 
     def pt(w):
         return ic(w)
 
-    def L(w):
-        return L0 * (1 + sign * 4 * pi * eta * pt(w) * chi(w))
+    def L(w, sig, gam, center):
+        return L0 * (1 + sign * 4 * pi * eta * pt(w) * chi(w, sig, gam, center))
 
-    def ZLpure(w):
-        return im_unit * w * L(w) + Rcoil
+    def ZLpure(w, sig, gam, center):
+        return im_unit * w * L(w, sig, gam, center) + Rcoil
 
     def Zstray(w):
         with np.errstate(divide='ignore', invalid='ignore'):
             result = np.where(Cstray != 0, 1 / (im_unit * w * Cstray), 0)
         return np.where(w == 0, 0, result)  # Avoid invalid values for w=0
 
-    def ZL(w):
-        return ZLpure(w) * Zstray(w) / (ZLpure(w) + Zstray(w))
+    def ZL(w, sig, gam, center):
+        return ZLpure(w, sig, gam, center) * Zstray(w) / (ZLpure(w, sig, gam, center) + Zstray(w))
 
-    def ZT(w):
+    def ZT(w, sig, gam, center):
         epsilon = 1e-10  # Small constant to avoid division by zero
-        return Z0(w) * (ZL(w) + Z0(w) * np.tanh(gamma(w) * l(w))) / (Z0(w) + ZL(w) * np.tanh(gamma(w) * l(w)) + epsilon)
+        return Z0(w) * (ZL(w, sig, gam, center) + Z0(w) * np.tanh(gamma(w) * l(w))) / (Z0(w) + ZL(w, sig, gam, center) * np.tanh(gamma(w) * l(w)) + epsilon)
 
-    def Zleg1(w):
-        return r + ZC(w) + ZT(w)
+    def Zleg1(w, sig, gam, center):
+        return r + ZC(w) + ZT(w, sig, gam, center)
 
-    def Ztotal(w):
-        return R1 / (1 + (R1 / Zleg1(w)))
+    def Ztotal(w, sig, gam, center):
+        return R1 / (1 + (R1 / Zleg1(w, sig, gam, center)))
 
     def parfaze(w):
         yp1 = 0
@@ -160,14 +160,14 @@ def Proton(f, U, Cknob, eta, trim, Cstray, phi, DC_offset, ampG1, sigmaG1, ampL1
         return slope_phi() * (w - w_res) + parfaze(w)
 
     def phi(w):
-        return phi_trim(w) + phi
+        return phi_trim(w) + phi_const
 
-    def V_out(w):
-        return -1 * (I * Ztotal(w) * np.exp(im_unit * phi(w) * pi / 180))
+    def V_out(w, sig, gam, center):
+        return -1 * (I * Ztotal(w, sig, gam, center) * np.exp(im_unit * phi(w) * pi / 180))
 
-    out_y = V_out(w)
+    out_y = V_out(w) + x1(f,sig, gam, center)
     offset = np.array([x - min(out_y.real) for x in out_y.real])
-    return offset.real + DC_offset
+    return offset.real + DC_offset 
 
 def Baseline(f, U, Cknob, eta, trim, Cstray, phi_const, DC_offset):
     # Preamble

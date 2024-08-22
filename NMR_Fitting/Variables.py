@@ -22,6 +22,6 @@ function_input = 213000000
 scansize = .25
 rangesize = 0
 # ---- Data Files ---- #
-Icoil = np.loadtxt(r'data\New_Current.csv', unpack = True)
-df_rawsignal_noise = pd.read_csv(r"J:\Users\Devin\Desktop\Spin Physics Work\ANN Github\NMR-Fermilab\Noise_RawSignal.csv",header=None)
-df_rawsignal_noise = df_rawsignal_noise.drop([0],axis=1)
+# Icoil = np.loadtxt(r'data\New_Current.csv', unpack = True)
+# df_rawsignal_noise = pd.read_csv(r"J:\Users\Devin\Desktop\Spin Physics Work\ANN Github\NMR-Fermilab\Noise_RawSignal.csv",header=None)
+# df_rawsignal_noise = df_rawsignal_noise.drop([0],axis=1)
