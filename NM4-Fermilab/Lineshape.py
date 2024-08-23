@@ -1,12 +1,38 @@
 import numpy as np
-from scipy import interpolate
-import cmath
-from scipy.special import voigt_profile
+from scipy.special import wofz
 from Variables import *
 
-def Voigt(x, ampG1, sigmaG1, ampL1, widL1, center):
-    return (ampG1*(1/(sigmaG1*(np.sqrt(2*np.pi))))*(np.exp(-((x-center)**2)/((2*sigmaG1)**2)))) +\
-              ((ampL1*widL1**2/((x-center)**2+widL1**2)) )
+def FrequencyBound(f):
+    # Define the domain to fit (bins 100 to 400)
+    fit_start_bin, fit_end_bin = 0, 500
+
+    # Frequency conversion factors
+    bin_to_freq = 0.0015287  # MHz per bin
+    start_freq = f  # Starting frequency in MHz
+
+    x_full_bins = np.arange(500)  # Full range of bins
+    x_full_freq = start_freq + x_full_bins * bin_to_freq  # Convert bins to frequency
+
+    x_bins = x_full_bins[fit_start_bin:fit_end_bin+1]
+    x_freq = x_full_freq[fit_start_bin:fit_end_bin+1]
+
+    return x_full_freq,  x_full_freq[0], x_full_freq[-1]
+
+def Voigt(x, amp, s, g, x0):
+    """
+    Voigt profile function with an adjustable center (x0).
+    
+    :param x: Array of x values
+    :param amp: Amplitude of the Voigt profile
+    :param s: Width of the Gaussian component (sigma)
+    :param g: Width of the Lorentzian component (gamma)
+    :param x0: Center of the Voigt profile
+    :return: Voigt profile values
+    """
+    z = (x - x0 + 1j * g) / (s * np.sqrt(2.0))
+    v = wofz(z)  # Faddeeva function for Voigt profile
+    out = amp * (np.real(v) / (s * np.sqrt(2 * np.pi)))
+    return out
 
 
 def Signal(f, U, Cknob, eta, trim, Cstray, phi_const, DC_offset,ampG1, sigmaG1, ampL1, widL1, center):

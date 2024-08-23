@@ -1,6 +1,9 @@
 import numpy as np
 import random
 from scipy.stats import zscore
+import os
+import glob as glob
+import scipy.integrate as spi
 
 def choose_random_row(csv_file):
     df = csv_file
@@ -41,3 +44,65 @@ def Sinusoidal_Noise(shape):
     result = cos_values + sin_values
     
     return result
+
+def apply_distortion(signal, alpha):
+    """
+    Apply cubic non-linear distortion to the input signal.
+    
+    Parameters:
+    signal (numpy array): The original signal.
+    alpha (float): The distortion parameter.
+    
+    Returns:
+    numpy array: The distorted signal.
+    """
+    distorted_signal = signal + alpha * np.power(signal, 3)
+    return distorted_signal
+
+def find_file(filename, start_dir='.'):
+    current_dir = os.path.abspath(start_dir)
+    levels_up = 0
+    
+    while levels_up <= 2:  # Limit to two directory levels up
+        # Search in the current directory and its subdirectories
+        for file in glob.glob(os.path.join(current_dir, '**', filename), recursive=True):
+            return file
+        
+        # Move up one directory level
+        current_dir = os.path.abspath(os.path.join(current_dir, '..'))
+        levels_up += 1
+    
+    return None
+
+# Function to print the covariance matrix with associated parameter names
+def print_cov_matrix_with_param_names(matrix, param_names):
+    # Print header with parameter names
+    print("Covariance Matrix (with parameter names):")
+    print(f"{'':>16}  " + "  ".join(f"{name:>16}" for name in param_names))
+    
+    # Print each row with the corresponding parameter name
+    for i, row in enumerate(matrix):
+        row_label = param_names[i]
+        formatted_row = "  ".join(f"{value:16.5e}" for value in row)
+        print(f"{row_label:>16}  {formatted_row}")
+
+# Function to print optimized parameters with their names
+def print_optimized_params_with_names(params, param_names):
+    print("Optimized Parameters:")
+    for name, param in zip(param_names, params):
+        print(f"{name:>16}: {param:16.5e}")
+
+def integrate_function_infinity(func, *args):
+    """
+    Integrates a given function func over the interval [-∞, ∞].
+
+    Parameters:
+    - func: The function to integrate.
+            It should take at least one argument (the variable of integration).
+    - args: Additional arguments to pass to func (optional).
+
+    Returns:
+    - The result of the integral and the absolute error estimate.
+    """
+    result, error = spi.quad(func, -float('inf'), float('inf'), args=args)
+    return result, error
