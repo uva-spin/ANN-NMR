@@ -3,6 +3,7 @@ import random
 from scipy.stats import zscore
 import os
 import glob as glob
+import scipy.integrate as spi
 
 def choose_random_row(csv_file):
     df = csv_file
@@ -90,3 +91,18 @@ def print_optimized_params_with_names(params, param_names):
     print("Optimized Parameters:")
     for name, param in zip(param_names, params):
         print(f"{name:>16}: {param:16.5e}")
+
+def integrate_function_infinity(func, *args):
+    """
+    Integrates a given function func over the interval [-∞, ∞].
+
+    Parameters:
+    - func: The function to integrate.
+            It should take at least one argument (the variable of integration).
+    - args: Additional arguments to pass to func (optional).
+
+    Returns:
+    - The result of the integral and the absolute error estimate.
+    """
+    result, error = spi.quad(func, -float('inf'), float('inf'), args=args)
+    return result, error

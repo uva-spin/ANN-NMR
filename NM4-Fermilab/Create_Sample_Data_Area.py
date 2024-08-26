@@ -11,17 +11,7 @@ SNR_arr = []
 
 # Loop to generate data with varying parameters
 for i in range(10):
-    # Randomly vary the parameters slightly for both Voigt and Baseline
-    # amp = 0.00005 + np.random.uniform(-0.00001, 0.00001)  # Amplitude variation
-    # center = np.random.uniform(-0.05, 0.05)               # Center shift
 
-    # U = 0.1 + np.random.uniform(-0.01, 0.01)
-    # Cknob = 0.042 + np.random.uniform(-0.005, 0.005)
-    # eta = 0.0104 + np.random.uniform(-0.001, 0.001)
-    # cable = 22/2 + np.random.uniform(-1, 1)
-    # Cstray = 10**(-15)  # Keeping this constant
-    # phi = 6.1319 + np.random.uniform(-0.1, 0.1)
-    # shift = np.random.uniform(-0.01, 0.01)
     U = 2.4283e1 + np.random.uniform(-0.01, 0.01)
     Cknob = .0647 + np.random.uniform(-0.005, 0.005)
     cable = 22/2
@@ -29,10 +19,10 @@ for i in range(10):
     phi = 6.1319 + np.random.uniform(-0.1, 0.1)
     Cstray = 10**(-15)
     shift = -2.0464e-2 + np.random.uniform(-0.001, 0.001)
-    sig = 0.01 + np.random.uniform(0.001, 0.1)              # Gaussian width variation
-    gam = 0.01 + np.random.uniform(0.001, 0.1)              # Lorentzian width variation
-    amp = .005 + np.random.uniform(-0.00001, 0.0001)
-    center = 213
+    sig = 0.01 + np.random.uniform(-0.009, 0.1)              # Gaussian width variation
+    gam = 0.01 + np.random.uniform(-0.009, 0.1)              # Lorentzian width variation
+    amp = .002 + np.random.uniform(-0.0019, 0.005)
+    center = 213 + np.random.uniform(-.3, .3)
 
     # Generate x values
     x, lower_bound, upper_bound = FrequencyBound(212.6)
@@ -47,8 +37,8 @@ for i in range(10):
     combined_signal = signal + baseline
 
     # Generate some noise (e.g., Gaussian noise)
-    # noise = np.random.normal(0, 0.000001, size=x.shape)
-    noise = 0
+    noise = np.random.normal(0, 0.0005, size=x.shape)
+    # noise = 0
 
     # Combine signal, baseline, and noise
     noisy_signal = combined_signal + noise
@@ -59,7 +49,7 @@ for i in range(10):
     SNR = x_sig / y_sig
 
     # Calculate the area under the Voigt curve
-    area, _ = quad(Voigt, lower_bound, upper_bound, args=(amp, s, g, center))
+    area, _ = quad(Voigt, lower_bound, upper_bound, args=(amp, sig, gam, center))
 
     # Store the results
     Signal_arr.append(noisy_signal)
@@ -72,15 +62,7 @@ df['Area'] = Area_arr
 df['SNR'] = SNR_arr
 # Save DataFrame to CSV
 try:
-    df.to_csv(r'J:\Users\Devin\Desktop\Spin Physics Work\ANN Github\NMR-Fermilab\ANN-NMR\NM4-Fermilab\data\Generated_Sample_Data_with_Area.csv', index=False)
+    df.to_csv(r'Generated_Sample_Data_with_Area.csv', index=False)
     print("CSV file saved successfully.")
 except Exception as e:
     print(f"Error saving CSV file: {e}")
-
-# Optionally plot one of the generated signals
-import matplotlib.pyplot as plt
-plt.plot(x, noisy_signal)
-plt.title('Generated Signal with Noise')
-plt.xlabel('x')
-plt.ylabel('Signal + Noise')
-plt.show()

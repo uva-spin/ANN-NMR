@@ -10,20 +10,22 @@ from Variables import *
 #     return (ampG1*(1/(sigmaG1*(np.sqrt(2*np.pi))))*(np.exp(-((x-center)**2)/((2*sigmaG1)**2)))) +\
 #               ((ampL1*widL1**2/((x-center)**2+widL1**2)) )
 
-def Voigt(x, s, g, x0=0):
+def Voigt(x, amp, s, g, x0):
     """
     Voigt profile function with an adjustable center (x0).
     
     :param x: Array of x values
+    :param amp: Amplitude of the Voigt profile
     :param s: Width of the Gaussian component (sigma)
     :param g: Width of the Lorentzian component (gamma)
-    :param x0: Center of the Voigt profile (default: 0)
+    :param x0: Center of the Voigt profile
     :return: Voigt profile values
     """
     z = (x - x0 + 1j * g) / (s * np.sqrt(2.0))
     v = wofz(z)  # Faddeeva function for Voigt profile
-    out = np.real(v) / (s * np.sqrt(2 * np.pi))
+    out = amp * (np.real(v) / (s * np.sqrt(2 * np.pi)))
     return out
+
 
 
 def FrequencyBound(f):
@@ -165,7 +167,7 @@ def Proton(f, U, Cknob, eta, trim, Cstray, phi_const, DC_offset, sig, gam, cente
     def V_out(w, sig, gam, center):
         return -1 * (I * Ztotal(w, sig, gam, center) * np.exp(im_unit * phi(w) * pi / 180))
 
-    out_y = V_out(w) + x1(f,sig, gam, center)
+    out_y = V_out(w,sig, gam, center)
     offset = np.array([x - min(out_y.real) for x in out_y.real])
     return offset.real + DC_offset 
 
