@@ -10,6 +10,12 @@ from tensorflow.keras.models import load_model
 from matplotlib import pyplot as plt
 from tensorflow.keras.callbacks import CSVLogger, TensorBoard, EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
 from tqdm.keras import TqdmCallback
+from keras.activations import *
+import sys
+import io
+
+sys.stdout = io.TextIOWrapper(sys.stdout.detach(), encoding='utf-8')
+
 
 # Enable logging to check GPU usage
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '0'
@@ -30,11 +36,21 @@ physical_devices = tf.config.list_physical_devices('GPU')
 if physical_devices:
     tf.config.experimental.set_memory_growth(physical_devices[0], True)
 
+physical_devices
+if physical_devices:
+    try:
+        # Restrict TensorFlow to only use the first GPU
+        tf.config.set_visible_devices(physical_devices[0], 'GPU')
+        print(f"Using GPU: {physical_devices[0]}")
+    except RuntimeError as e:
+        print(f"Error setting GPU: {e}")
+
 # Enable mixed precision to maximize GPU throughput
 tf.keras.mixed_precision.set_global_policy('mixed_float16')
 
 # Data loading (without header)
-data_path = r'J:\Users\Devin\Desktop\Spin Physics Work\ANN Github\NMR-Fermilab\Big_Data\ANN_Sample_Data\Sample_Data_1M.csv'
+# data_path = r'J:\Users\Devin\Desktop\Spin Physics Work\ANN Github\NMR-Fermilab\Big_Data\ANN_Sample_Data\Sample_Data_1M.csv'
+data_path = r'/media/devin/Z/Users/Devin/Desktop/Spin Physics Work/ANN Github/NMR-Fermilab/Big_Data/ANN_Sample_Data/Sample_Data_1M.csv'
 df = pd.read_csv(data_path, header=None)
 
 # Rename columns for clarity
@@ -77,7 +93,7 @@ with strategy.scope():
             model.add(tf.keras.layers.BatchNormalization())
             model.add(tf.keras.layers.Dense(
                 units=units,
-                activation=hp.Choice(f'act_{i}', ['relu', 'relu6', 'LeakyReLU', 'swish']),
+                activation=hp.Choice(f'act_{i}', ['relu', 'relu6', 'swish']),
                 kernel_regularizer=regularizers.L2(1e-6)  # Regularization for better generalization
             ))
             # Use dropout for better generalization
@@ -110,10 +126,10 @@ tuner = RandomSearch(
 # Callbacks for efficiency and accuracy improvements
 callbacks_list = [
     CSVLogger(os.path.join(performance_dir, f'training_log_{version}.csv'), append=True, separator=';'),
-    TensorBoard(log_dir=log_dir, histogram_freq=1),
+    # TensorBoard(log_dir=log_dir, histogram_freq=1),
     EarlyStopping(monitor='val_loss', mode='min', patience=10, verbose=1, restore_best_weights=True),  # Optimal patience
     ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=5, verbose=1, min_lr=1e-6),  # Aggressive learning rate reduction
-    ModelCheckpoint(filepath=os.path.join(model_dir, f'best_model_{version}.keras'), save_best_only=True, monitor='val_loss', mode='min'),
+    ModelCheckpoint(filepath=os.path.join(model_dir, f'best_model_{version}.h5'), save_best_only=True, monitor='val_loss', mode='min'),
 ]
 
 # Start tuning with the GPU
@@ -130,12 +146,11 @@ with open(os.path.join(performance_dir, f'model_summary_{version}.txt'), 'w') as
     model_tuned.summary(print_fn=lambda x: f.write(x + '\n'))
 
 callbacks_list = [
-    TqdmCallback(verbose=1),
     CSVLogger(os.path.join(performance_dir, f'training_log_{version}.csv'), append=True, separator=';'),
-    TensorBoard(log_dir=log_dir, histogram_freq=1),
+    # TensorBoard(log_dir=log_dir, histogram_freq=1), 
     EarlyStopping(monitor='val_loss', mode='min', patience=10, verbose=1, restore_best_weights=True),  # Optimal patience
     ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=5, verbose=1, min_lr=1e-6),  # Aggressive learning rate reduction
-    ModelCheckpoint(filepath=os.path.join(model_dir, f'best_model_{version}.keras'), save_best_only=True, monitor='val_loss', mode='min'),
+    ModelCheckpoint(filepath=os.path.join(model_dir, f'best_model_{version}.h5'), save_best_only=True, monitor='val_loss', mode='min'),
 ]
 
 # Train the final model using the best hyperparameters
