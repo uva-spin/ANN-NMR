@@ -2,7 +2,8 @@ import numpy as np
 import pandas as pd
 from Lineshape import *
 from scipy.integrate import quad
-
+from tqdm import tqdm
+import os 
 
 # Initialize arrays to store results
 Signal_arr = []
@@ -10,7 +11,7 @@ Area_arr = []
 SNR_arr = []
 
 # Loop to generate data with varying parameters
-for i in range(10):
+for i in tqdm(range(50000)):
 
     U = 2.4283e1 + np.random.uniform(-0.01, 0.01)
     Cknob = .0647 + np.random.uniform(-0.005, 0.005)
@@ -61,8 +62,13 @@ df = pd.DataFrame(Signal_arr)
 df['Area'] = Area_arr
 df['SNR'] = SNR_arr
 # Save DataFrame to CSV
+
+file_path = 'Testing_Data'
+
+os.makedirs(file_path, exist_ok = True)
+
 try:
-    df.to_csv(r'Generated_Sample_Data_with_Area.csv', index=False)
+    df.to_csv(os.path.join(file_path,'Sample_Testing_Data.csv'), index=False)
     print("CSV file saved successfully.")
 except Exception as e:
     print(f"Error saving CSV file: {e}")

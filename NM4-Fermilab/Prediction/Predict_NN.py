@@ -6,17 +6,9 @@ from sklearn.utils import shuffle
 from tensorflow.keras.models import load_model
 import h5py as h
 from matplotlib import pyplot as plt
-from tensorflow.keras import regularizers
-from sklearn.utils import class_weight
-import random
-from keras.layers import GaussianNoise
 from matplotlib.offsetbox import AnchoredText
 from scipy.stats import norm
-import matplotlib.mlab as mlab
 import sys
-from scipy import interpolate
-import cmath
-import statistics as std
 
 Polarization_Model = tf.keras.models.load_model('/project/ptgroup/Devin/Neural_Network/Trained_Models_v14/trained_model_1M_v3_tuned.h5')
 
@@ -50,120 +42,6 @@ result['P_True'] = P.tolist()
 result['rel_err'] = rel_err.tolist()
 result['abs_err'] = abs_err.tolist()
 result.to_csv('Results.csv')
-
-# ### Plotting ###
-
-# g = 0.05
-# s = 0.04
-# bigy=(3-s)**0.5
-# labelfontsize = 30
-
-# def cosal(x,eps):
-#     return (1-eps*x-s)/bigxsquare(x,eps)
-
-
-# def c(x):
-#     return ((g**2+(1-x-s)**2)**0.5)**0.5
-
-
-# def bigxsquare(x,eps):
-#     return (g**2+(1-eps*x-s)**2)**0.5
-
-
-# def mult_term(x,eps):
-#     return float(1)/(2*np.pi*np.sqrt(bigxsquare(x,eps)))
-
-
-# def cosaltwo(x,eps):
-#     return ((1+cosal(x,eps))/2)**0.5
-
-
-# def sinaltwo(x,eps):
-#     return ((1-cosal(x,eps))/2)**0.5
-
-
-# def termone(x,eps):
-#     return np.pi/2+np.arctan((bigy**2-bigxsquare(x,eps))/((2*bigy*(bigxsquare(x,eps))**0.5)*sinaltwo(x,eps)))
-
-
-# def termtwo(x,eps):
-#     return np.log((bigy**2+bigxsquare(x,eps)+2*bigy*(bigxsquare(x,eps)**0.5)*cosaltwo(x,eps))/(bigy**2+bigxsquare(x,eps)-2*bigy*(bigxsquare(x,eps)**0.5)*cosaltwo(x,eps)))
-
-# def icurve(x,eps):
-#     return mult_term(x,eps)*(2*cosaltwo(x,eps)*termone(x,eps)+sinaltwo(x,eps)*termtwo(x,eps))
-
-# xvals = np.linspace(-6,6,500)
-# yvals = icurve(xvals,1)/10
-# yvals2 = icurve(-xvals,1)/10
-# x_arr = np.linspace(31.5,32.5,500)
-
-
-# ###Circuit Parameters###
-# U = 0.1
-# # Cknob = 0.125
-# Cknob = .120
-# cable = 23/2
-# eta = 0.0104
-# phi = 6.1319
-# Cstray = 10**(-15)
-
-# k_range = 5000
-# circ_constants = (3*10**(-8),0.35,619,50,10,0.0343,4.752*10**(-9),50,1.027*10**(-10),2.542*10**(-7),0,0,0,0) ### Don't change these, these are constants of the Liverpool
-# circ_params = (U,Cknob,cable,eta,phi,Cstray)
-# function_input = 32000000
-# # function_input = 213000000
-# scan_s = .25
-# ranger = 0
-
-
-    
-
-# def cosal(x,eps):
-#     return (1-eps*x-s)/bigxsquare(x,eps)
-
-
-# def c(x):
-#     return ((g**2+(1-x-s)**2)**0.5)**0.5
-
-
-# def bigxsquare(x,eps):
-#     return (g**2+(1-eps*x-s)**2)**0.5
-
-
-# def mult_term(x,eps):
-#     return float(1)/(2*np.pi*np.sqrt(bigxsquare(x,eps)))
-
-
-# def cosaltwo(x,eps):
-#     return ((1+cosal(x,eps))/2)**0.5
-
-
-# def sinaltwo(x,eps):
-#     return ((1-cosal(x,eps))/2)**0.5
-
-
-# def termone(x,eps):
-#     return np.pi/2+np.arctan((bigy**2-bigxsquare(x,eps))/((2*bigy*(bigxsquare(x,eps))**0.5)*sinaltwo(x,eps)))
-
-
-# def termtwo(x,eps):
-#     return np.log((bigy**2+bigxsquare(x,eps)+2*bigy*(bigxsquare(x,eps)**0.5)*cosaltwo(x,eps))/(bigy**2+bigxsquare(x,eps)-2*bigy*(bigxsquare(x,eps)**0.5)*cosaltwo(x,eps)))
-
-# def icurve(x,eps):
-#     return mult_term(x,eps)*(2*cosaltwo(x,eps)*termone(x,eps)+sinaltwo(x,eps)*termtwo(x,eps))
-
-# ### All simulation above, can just ignore
-
-# xvals = np.linspace(-6,6,500)
-# yvals = icurve(xvals,1)/10
-# yvals2 = icurve(-xvals,1)/10
-# center = 250
-# length = range(500)
-# norm_array = []
-# for x in length:
-#     norm_array = np.append(norm_array,(x - center)*(12/500))  
-# Iplus = icurve(norm_array,1)
-# Iminus = icurve(norm_array,-1)
 
 result['P_diff'] = result['P'] - result['P_True']
 x_Pol = np.array(result['P_diff'])*100
