@@ -1,3 +1,8 @@
+
+### This file should be ran with the associated jobscript.sh file within this directory. Adequate amounts of sample data
+### are most efficiently created on Rivanna using batch job submissions. Instructions for how to 
+### Create large amounts of sample data are present in the .sh file.
+
 import numpy as np
 import pandas as pd
 from Lineshape import *
