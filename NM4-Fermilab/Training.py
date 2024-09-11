@@ -1,22 +1,17 @@
 import os
 import datetime
-import time
-import pandas as pd
 import numpy as np
+import pandas as pd
 import tensorflow as tf
 from keras_tuner import RandomSearch
-from tensorflow.keras import regularizers, callbacks
-from tensorflow.keras.models import load_model
-from matplotlib import pyplot as plt
-from tensorflow.keras.callbacks import CSVLogger, TensorBoard, EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
-from tqdm.keras import TqdmCallback
-from sklearn.preprocessing import StandardScaler, MinMaxScaler
-from keras.activations import *
-import sys
+from tensorflow.keras import regularizers
+from tensorflow.keras.callbacks import CSVLogger, EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
+from sklearn.preprocessing import StandardScaler
 import io
+import sys
+from Misc_Functions import *
 
 sys.stdout = io.TextIOWrapper(sys.stdout.detach(), encoding='utf-8')
-
 
 # Enable logging to check GPU usage
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '0'
@@ -37,35 +32,27 @@ physical_devices = tf.config.list_physical_devices('GPU')
 if physical_devices:
     tf.config.experimental.set_memory_growth(physical_devices[0], True)
 
-physical_devices
-if physical_devices:
-    try:
-        # Restrict TensorFlow to only use the first GPU
-        tf.config.set_visible_devices(physical_devices[0], 'GPU')
-        print(f"Using GPU: {physical_devices[0]}")
-    except RuntimeError as e:
-        print(f"Error setting GPU: {e}")
-
 # Enable mixed precision to maximize GPU throughput
 tf.keras.mixed_precision.set_global_policy('mixed_float16')
 
 # Data loading (without header)
-data_path = r'/media/devin/Z/Users/Devin/Desktop/Spin Physics Work/ANN Github/NMR-Fermilab/Big_Data/ANN_Sample_Data/Sample_Data_1M.csv'
+data_path = find_file("Sample_Data_1M.csv")
 df = pd.read_csv(data_path, header=None)
 
 # Rename columns for clarity
 df.columns = [f'feature_{i}' for i in range(500)] + ['Area', 'SNR']
 
-# Preprocessing: Normalize the features and the target
+# Preprocessing: Normalize the features and log-transform the target
 scaler_X = StandardScaler()
-scaler_y = MinMaxScaler()  # MinMaxScaler is better suited for small target values
 
 X = df.drop(['Area', 'SNR'], axis=1)
 y = df['Area'].values.reshape(-1, 1)
 
-# Fit scalers
+# Log-transform the target (add a small constant to avoid log(0))
+y_log = np.log1p(y)
+
+# Fit scaler on features
 X_scaled = scaler_X.fit_transform(X)
-y_scaled = scaler_y.fit_transform(y)
 
 # Split data
 def split_data(X, y, split=0.1):
@@ -79,10 +66,10 @@ def split_data(X, y, split=0.1):
     
     return trn_X, tst_X, trn_y, tst_y
 
-train_X, test_X, train_y, test_y = split_data(X_scaled, y_scaled)
+train_X, test_X, train_y, test_y = split_data(X_scaled, y_log)
 
 # Create directories if they don't exist
-version = 'v1'  # Change this to reflect different versions
+version = 'v3'
 performance_dir = f"Model Performance/{version}"
 model_dir = f"Models/{version}"
 os.makedirs(performance_dir, exist_ok=True)
@@ -96,22 +83,18 @@ with strategy.scope():
         model = tf.keras.Sequential()
         model.add(tf.keras.Input(shape=(train_X.shape[1],)))
 
-        # Apply advanced hyperparameters tuning with efficient architectures
-        for i in range(hp.Int('layers', 2, 10)):  # Use at least 2 layers for complexity
-            units = hp.Int(f'units_{i}', min_value=64, max_value=1024, step=64)  # Larger range for units
+        for i in range(hp.Int('layers', 2, 10)):
+            units = hp.Int(f'units_{i}', min_value=64, max_value=1024, step=64)
             model.add(tf.keras.layers.BatchNormalization())
             model.add(tf.keras.layers.Dense(
                 units=units,
                 activation=hp.Choice(f'act_{i}', ['relu', 'relu6', 'swish']),
-                kernel_regularizer=regularizers.L2(1e-6)  # Regularization for better generalization
+                kernel_regularizer=regularizers.L2(1e-6)
             ))
-            # Use dropout for better generalization
             model.add(tf.keras.layers.Dropout(hp.Float(f'dropout_{i}', min_value=0.1, max_value=0.5, step=0.1)))
         
-        # Final output layer
         model.add(tf.keras.layers.Dense(1, activation='sigmoid', dtype='float32'))
 
-        # Use advanced learning rate tuning strategies
         lr_schedule = hp.Choice('learning_rate', [1e-5, 1e-4, 5e-4])
         model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=lr_schedule),
                       loss='mean_squared_error', metrics=['mean_squared_error'])
@@ -126,8 +109,8 @@ os.makedirs(log_dir, exist_ok=True)
 tuner = RandomSearch(
     build_model,
     objective='val_loss',
-    max_trials=20,  # More trials for better tuning
-    executions_per_trial=1,  # Execute once per trial to reduce redundancy
+    max_trials=20,
+    executions_per_trial=1,
     directory=log_dir,
     project_name="hyperparameter_tuning"
 )
@@ -135,9 +118,8 @@ tuner = RandomSearch(
 # Callbacks for efficiency and accuracy improvements
 callbacks_list = [
     CSVLogger(os.path.join(performance_dir, f'training_log_{version}.csv'), append=True, separator=';'),
-    # TensorBoard(log_dir=log_dir, histogram_freq=1),
-    EarlyStopping(monitor='val_loss', mode='min', patience=10, verbose=1, restore_best_weights=True),  # Optimal patience
-    ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=5, verbose=1, min_lr=1e-6),  # Aggressive learning rate reduction
+    EarlyStopping(monitor='val_loss', mode='min', patience=10, verbose=1, restore_best_weights=True),
+    ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=5, verbose=1, min_lr=1e-6),
     ModelCheckpoint(filepath=os.path.join(model_dir, f'best_model_{version}.keras'), save_best_only=True, monitor='val_loss', mode='min'),
 ]
 
@@ -156,7 +138,7 @@ with open(os.path.join(performance_dir, f'model_summary_{version}.txt'), 'w') as
 
 # Train the final model using the best hyperparameters
 fitted_data = model_tuned.fit(train_X, train_y, validation_data=(test_X, test_y),
-                              epochs=200, callbacks=callbacks_list, batch_size=128)  # Increase epochs and batch size for better training
+                              epochs=200, callbacks=callbacks_list, batch_size=128)
 
 # Save the final model to the model directory
 model_tuned.save(os.path.join(model_dir, f'final_model_{version}.keras'))

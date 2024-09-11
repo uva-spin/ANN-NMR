@@ -14,17 +14,29 @@ SNR_arr = []
 
 for i in tqdm(range(1000)): #Loop over 1E3 times 
 
-    U = 2.4283e1 + np.random.uniform(-0.01, 0.01)
-    Cknob = .0647 + np.random.uniform(-0.005, 0.005)
+    # U = 2.4283e1 + np.random.uniform(-0.01, 0.01)
+    # Cknob = .0647 + np.random.uniform(-0.005, 0.005)
+    # cable = 22/2
+    # eta = 1.04e-2 + np.random.uniform(-0.001, 0.001)
+    # phi = 6.1319 + np.random.uniform(-0.1, 0.1)
+    # Cstray = 10**(-15)
+    # shift = -2.0464e-2 + np.random.uniform(-0.001, 0.001)
+    # sig = 0.01 + np.random.uniform(-0.009, 0.1)              # Gaussian width variation
+    # gam = 0.01 + np.random.uniform(-0.009, 0.1)              # Lorentzian width variation
+    # amp = .002 + np.random.uniform(-0.0019, 0.005)
+    # center = 213 + np.random.uniform(-.3, .3)
+
+    U = 2.4283e1 
+    Cknob = .0647 
     cable = 22/2
-    eta = 1.04e-2 + np.random.uniform(-0.001, 0.001)
-    phi = 6.1319 + np.random.uniform(-0.1, 0.1)
+    eta = 1.04e-2 
+    phi = 6.1319
     Cstray = 10**(-15)
-    shift = -2.0464e-2 + np.random.uniform(-0.001, 0.001)
-    sig = 0.01 + np.random.uniform(-0.009, 0.1)              # Gaussian width variation
-    gam = 0.01 + np.random.uniform(-0.009, 0.1)              # Lorentzian width variation
+    shift = -2.0464e-2
+    sig = 0.01            
+    gam = 0.01         
     amp = .002 + np.random.uniform(-0.0019, 0.005)
-    center = 213 + np.random.uniform(-.3, .3)
+    center = 213 
 
     x, lower_bound, upper_bound = FrequencyBound(212.6)
 
