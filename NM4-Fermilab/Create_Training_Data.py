@@ -1,3 +1,8 @@
+
+### This file should be ran with the associated jobscript.sh file within this directory. Adequate amounts of sample data
+### are most efficiently created on Rivanna using batch job submissions. Instructions for how to 
+### Create large amounts of sample data are present in the .sh file.
+
 import numpy as np
 import pandas as pd
 from Lineshape import *
@@ -12,7 +17,7 @@ Area_arr = []
 SNR_arr = []
 
 
-for i in tqdm(range(1000)): #Loop over 1E3 times 
+for i in tqdm(range(1000)):  
 
     # U = 2.4283e1 + np.random.uniform(-0.01, 0.01)
     # Cknob = .0647 + np.random.uniform(-0.005, 0.005)
@@ -42,33 +47,25 @@ for i in tqdm(range(1000)): #Loop over 1E3 times
 
     signal = Voigt(x, amp, sig, gam, center)
 
-    # Generate baseline with varying parameters
     baseline = Baseline(x, U, Cknob, eta, cable, Cstray, phi, shift)
 
-    # Combine signal and baseline
     combined_signal = signal + baseline
 
-    # Generate some noise (e.g., Gaussian noise)
     noise = np.random.normal(0, 0.0005, size=x.shape)
     # noise = 0
 
-    # Combine signal, baseline, and noise
     noisy_signal = combined_signal + noise
 
-    # Calculate SNR
     x_sig = np.max(np.abs(combined_signal))
     y_sig = np.max(np.abs(noise))
     SNR = x_sig / y_sig
 
-    # Calculate the area under the Voigt curve
     area, _ = quad(Voigt, lower_bound, upper_bound, args=(amp, sig, gam, center))
 
-    # Store the results
     Signal_arr.append(noisy_signal)
     Area_arr.append(area)
     SNR_arr.append(SNR)
 
-# Convert results to DataFrame and save to CSV
 df = pd.DataFrame(Signal_arr)
 df['Area'] = Area_arr
 df['SNR'] = SNR_arr

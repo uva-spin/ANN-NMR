@@ -13,6 +13,6 @@ echo "njobs=$njobs"
 for (( id=1; id<=$[$njobs]; id++ ))
 do  
   echo "submitting job number = $id"
-  sbatch Create_Sample_Data.slurm $id
+  sbatch Create_Data.slurm $id
   
 done

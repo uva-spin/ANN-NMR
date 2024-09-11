@@ -13,4 +13,4 @@ source activate tf-2.7
 conda install scikit-learn
 export LD_LIBRARY_PATH=~/.conda/envs/tf-2.7/lib:$LD_LIBRARY_PATH
 
-python Train_NN_v5.py
+python Training.py

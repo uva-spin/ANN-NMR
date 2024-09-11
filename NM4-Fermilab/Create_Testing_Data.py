@@ -17,12 +17,10 @@ def human_format(number):
     magnitude = int(floor(log(number, k)))
     return '%.2f%s' % (number / k**magnitude, units[magnitude])
 
-# Initialize arrays to store results
 Signal_arr = []
 Area_arr = []
 SNR_arr = []
 
-# Loop to generate data with varying parameters
 for i in tqdm(range(int(sys.argv[1]))):
 
     U = 2.4283e1 + np.random.uniform(-0.01, 0.01)
@@ -37,43 +35,32 @@ for i in tqdm(range(int(sys.argv[1]))):
     amp = .002 + np.random.uniform(-0.0019, 0.005)
     center = 213 + np.random.uniform(-.3, .3)
 
-    # Generate x values
     x, lower_bound, upper_bound = FrequencyBound(212.6)
 
-    # Generate signal using Voigt profile with varying parameters
     signal = Voigt(x, amp, sig, gam, center)
 
-    # Generate baseline with varying parameters
     baseline = Baseline(x, U, Cknob, eta, cable, Cstray, phi, shift)
 
-    # Combine signal and baseline
     combined_signal = signal + baseline
 
-    # Generate some noise (e.g., Gaussian noise)
     noise = np.random.normal(0, 0.0005, size=x.shape)
     # noise = 0
 
-    # Combine signal, baseline, and noise
     noisy_signal = combined_signal + noise
 
-    # Calculate SNR
     x_sig = np.max(np.abs(combined_signal))
     y_sig = np.max(np.abs(noise))
     SNR = x_sig / y_sig
 
-    # Calculate the area under the Voigt curve
     area, _ = quad(Voigt, lower_bound, upper_bound, args=(amp, sig, gam, center))
 
-    # Store the results
     Signal_arr.append(noisy_signal)
     Area_arr.append(area)
     SNR_arr.append(SNR)
 
-# Convert results to DataFrame and save to CSV
 df = pd.DataFrame(Signal_arr)
 df['Area'] = Area_arr
 df['SNR'] = SNR_arr
-# Save DataFrame to CSV
 
 file_path = 'Testing_Data'
 

@@ -56,8 +56,8 @@ LOG_DIR = f"{int(time.time())}"
 tuner = RandomSearch(
     model,
     objective='val_loss',
-    max_trials=2,  # how many model variations to test?
-    executions_per_trial=2,  # how many trials per variation? (same model could perform differently)
+    max_trials=2,  
+    executions_per_trial=2, 
     directory=LOG_DIR)
 
 
@@ -80,11 +80,7 @@ tuner.search(train_X, train_y,validation_data = (test_X, test_y), epochs=100, ca
 best_hps=tuner.get_best_hyperparameters(num_trials=5)[0]
 model_tuned = tuner.hypermodel.build(best_hps)
 model_tuned.summary()
-# print(f"""
-# The hyperparameter search is complete. The optimal number of units in the first densely-connected
-# layer is {best_hps.get('units_1')} and the optimal learning rate for the optimizer
-# is {best_hps.get('learning_rate')}.
-# """)
+
 from contextlib import redirect_stdout
 
 with open('modelsummary.txt', 'w') as f:

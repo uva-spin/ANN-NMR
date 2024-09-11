@@ -7,12 +7,7 @@
 #SBATCH -A spinquest_standard
 
 module purge
-module load gcc/9.2.0 lhapdf
-echo $LHAPDF_DATA_PATH
-ls $LHAPDF_DATA_PATH
-python -c "import lhapdf"
-python -V
-module load gcc/9.2.0 lhapdf
+module anaconda
 source activate tf-2.7
 export LD_LIBRARY_PATH=~/.conda/envs/tf-2.7/lib:$LD_LIBRARY_PATH
 
