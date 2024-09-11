@@ -7,9 +7,8 @@
 #SBATCH -A spinquest_standard
 
 module purge
-module --ignore_cache load "gcc/9.2.0"
-module load anaconda
+module anaconda
 source activate tf-2.7
 export LD_LIBRARY_PATH=~/.conda/envs/tf-2.7/lib:$LD_LIBRARY_PATH
 
-python Create_Training_Data.py $1
+python Create_Sample_Data.py $1
