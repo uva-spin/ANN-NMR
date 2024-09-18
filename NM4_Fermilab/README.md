@@ -38,6 +38,6 @@ This will run the script that will train the model. The script is already set up
 
 After training a model, you will want to test how it will predict against the training data (data that it has never 'seem' before).To do this, you will need to use the script *Predict.py*. To submit a slurm job for this script, open the terminal and type:
 
-*sbatch Predict.slurm \<Name of model\> \<training data\>* 
+*sbatch Predict.slurm \<version of model (ex. V2)\> \<training data\>* 
 
 
