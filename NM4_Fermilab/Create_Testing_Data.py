@@ -13,9 +13,9 @@ import sys
 
 def human_format(number):
     units = ['', 'K', 'M', 'G', 'T', 'P']
-    k = 1000.0
+    k = 1000
     magnitude = int(floor(log(number, k)))
-    return '%.2f%s' % (number / k**magnitude, units[magnitude])
+    return '%i%s' % (number / k**magnitude, units[magnitude])
 
 Signal_arr = []
 Area_arr = []
@@ -23,22 +23,25 @@ SNR_arr = []
 
 for i in tqdm(range(int(sys.argv[1]))):
 
-    U = 2.4283e1 
-    Cknob = .0647 
+    U = 2.4283 + np.random.uniform(-0.01, 0.01)
+    Cknob = .0647 + np.random.uniform(-0.005, 0.005)
     cable = 22/2
-    eta = 1.04e-2 
-    phi = 6.1319
+    eta = 1.04e-2 + np.random.uniform(-0.001, 0.001)
+    phi = 6.1319 + np.random.uniform(-0.1, 0.1)
     Cstray = 10**(-15)
-    shift = -2.0464e-2
-    sig = 0.01            
-    gam = 0.01         
-    amp = .002 + np.random.uniform(-0.0019, 0.005)
-    center = 213 
+    shift = -2.0464e-2 + np.random.uniform(-0.001, 0.001)
+
+    sig = 0.1 + np.random.uniform(-0.009, 0.001)       
+    gam = 0.1 + np.random.uniform(-0.009, 0.001)         
+    amp = .005 + np.random.uniform(-0.005, 0.01)
+    center = 213 + np.random.uniform(-.1, .1)
+
     x, lower_bound, upper_bound = FrequencyBound(212.6)
 
     signal = Voigt(x, amp, sig, gam, center)
 
     baseline = Baseline(x, U, Cknob, eta, cable, Cstray, phi, shift)
+    # baseline = -0.001717*x **2 + 0.732*x - 77.99
 
     combined_signal = signal + baseline
 
@@ -65,8 +68,10 @@ file_path = '/home/ptgroup/Documents/Devin/Big_Data/Testing_Data'
 
 os.makedirs(file_path, exist_ok = True)
 
+version = 'v7'
+
 try:
-    df.to_csv(os.path.join(file_path,'Sample_Testing_Data_' + str(human_format(int(sys.argv[1])) + '.csv')), index=False)
+    df.to_csv(os.path.join(file_path,f'Sample_Testing_Data_{version}_' + str(human_format(int(sys.argv[1])) + '.csv')), index=False)
     print("CSV file saved successfully.")
 except Exception as e:
     print(f"Error saving CSV file: {e}")

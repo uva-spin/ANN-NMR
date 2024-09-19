@@ -6,7 +6,6 @@ import tensorflow as tf
 from keras_tuner import RandomSearch
 from tensorflow.keras import regularizers
 from tensorflow.keras.callbacks import CSVLogger, EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
-from sklearn.preprocessing import StandardScaler
 import matplotlib.pyplot as plt
 import io
 import sys
@@ -57,7 +56,7 @@ x = df.drop(['Area', 'SNR'], axis=1)
 
 train_X, test_X, train_y, test_y = split_data(x, y)
 
-version = 'v6'
+version = 'v7'
 performance_dir = f"Model Performance/{version}"
 model_dir = f"Models/{version}"
 os.makedirs(performance_dir, exist_ok=True)
@@ -66,19 +65,19 @@ os.makedirs(model_dir, exist_ok=True)
 strategy = tf.distribute.MirroredStrategy()
 
 with strategy.scope():
-    def build_model(hp):
+    def Area_Model(hp):
         model = tf.keras.Sequential()
         model.add(tf.keras.Input(shape=(train_X.shape[1],)))
 
-        for i in range(hp.Int('layers', 2, 10)):  
+        for i in range(hp.Int('layers', 1, 10)):  
             units = hp.Int(f'units_{i}', min_value=64, max_value=1024, step=64)  
             model.add(tf.keras.layers.BatchNormalization())
             model.add(tf.keras.layers.Dense(
                 units=units,
-                activation=hp.Choice(f'act_{i}', ['relu', 'relu6', 'swish']),
+                activation=hp.Choice(f'act_{i}', ['relu', 'relu6', 'swish','linear']),
                 kernel_regularizer=regularizers.L2(1e-6)
             ))
-            model.add(tf.keras.layers.Dropout(hp.Float(f'dropout_{i}', min_value=0.1, max_value=0.5, step=0.1)))
+            model.add(tf.keras.layers.Dropout(hp.Float(f'dropout_{i}', min_value=0.1, max_value=0.8, step=0.1)))
         
         model.add(tf.keras.layers.Dense(1, activation='sigmoid', dtype='float32'))  # Use float32 for final layer
 
@@ -96,12 +95,12 @@ def create_dataset(X, y, batch_size):
     dataset = dataset.shuffle(buffer_size=1024).batch(batch_size).prefetch(tf.data.experimental.AUTOTUNE)
     return dataset
 
-batch_size = 64 
+batch_size = 32 
 train_dataset = create_dataset(train_X, train_y, batch_size)
 test_dataset = create_dataset(test_X, test_y, batch_size)
 
 tuner = RandomSearch(
-    build_model,
+    Area_Model,
     objective='val_loss',
     max_trials=3,  
     executions_per_trial=1,  
@@ -116,7 +115,7 @@ callbacks_list = [
     ModelCheckpoint(filepath=os.path.join(model_dir, f'best_model_{version}.h5'), save_best_only=True, monitor='val_loss', mode='min'),
 ]
 
-tuner.search(train_dataset, validation_data=test_dataset, epochs=20, callbacks=callbacks_list)
+tuner.search(train_dataset, validation_data=test_dataset, epochs=15, callbacks=callbacks_list)
 
 best_hps = tuner.get_best_hyperparameters(num_trials=1)[0]
 with strategy.scope():
@@ -127,7 +126,7 @@ with open(os.path.join(performance_dir, f'model_summary_{version}.txt'), 'w') as
     model_tuned.summary(print_fn=lambda x: f.write(x + '\n'))
 
 fitted_data = model_tuned.fit(train_dataset, validation_data=test_dataset,
-                              epochs=50, callbacks=callbacks_list)  
+                              epochs=20, callbacks=callbacks_list)  
 
 model_tuned.save(os.path.join(model_dir, f'final_model_{version}.h5'))
 

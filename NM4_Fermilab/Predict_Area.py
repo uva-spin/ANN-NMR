@@ -6,8 +6,12 @@ from tensorflow.keras.models import load_model
 from matplotlib import pyplot as plt
 from scipy.stats import norm
 from Misc_Functions import *
+import sys 
 
-version_number = 'v6'  
+
+version_number = str(sys.argv[0])
+data_file = str(sys.argv[1])
+
 
 model_dir = find_directory('Models', start_dir='.')
 data_dir = find_directory('Testing_Data', start_dir='.')
@@ -17,7 +21,7 @@ if not model_dir or not data_dir or not results_dir:
     raise FileNotFoundError("One or more required directories (Models, Testing_Data, Model Performance) could not be found.")
 
 model_filename = f'final_model_{version_number}.h5'
-data_file = os.path.join(data_dir, 'Sample_Testing_Data_50K.csv')
+data_file = os.path.join(data_dir, data_file)
 
 results_dir = os.path.join(results_dir, version_number)
 os.makedirs(results_dir, exist_ok=True)
@@ -49,17 +53,6 @@ result_file = os.path.join(results_dir, 'Results.csv')
 result.to_csv(result_file, index=False)
 print("Results successfully saved!")
 
-def plot_histogram(data, title, xlabel, ylabel, color, save_path, num_bins=100):
-    n, bins, patches = plt.hist(data, num_bins, density=True, color=color, alpha=0.7)
-    mu, sigma = norm.fit(data)
-    y = norm.pdf(bins, mu, sigma)
-    plt.plot(bins, y, '--', color='black')
-    plt.xlabel(xlabel)
-    plt.ylabel(ylabel)
-    plt.title(f"{title}: mu={mu:.4f}, sigma={sigma:.4f}")
-    plt.grid(True)
-    plt.savefig(save_path)
-    plt.close()
 
 plot_histogram(
     rel_err, 
@@ -67,7 +60,7 @@ plot_histogram(
     'Difference in Area', 
     'Count', 
     'green', 
-    os.path.join(results_dir, 'Histogram_Relative_Error.png')
+    os.path.join(results_dir, 'Histogram_Area_Difference.png')
 )
 
 plot_histogram(
