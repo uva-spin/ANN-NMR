@@ -9,8 +9,11 @@ from Misc_Functions import *
 import sys 
 
 
-version_number = str(sys.argv[0])
-data_file = str(sys.argv[1])
+# version_number = str(sys.argv[1])
+# data_file = str(sys.argv[2])
+
+version_number = 'v7'
+data_file = 'Sample_Testing_Data_v7_50K.csv'
 
 
 model_dir = find_directory('Models', start_dir='.')
@@ -29,7 +32,7 @@ os.makedirs(results_dir, exist_ok=True)
 model_file = find_file(model_filename, start_dir=model_dir)
 if model_file is None:
     raise FileNotFoundError(f"Model file '{model_filename}' not found.")
-Area_Model = load_model(model_file)
+Area_Model = load_model(r'Models\v7\final_model_v7.h5')
 
 df_Area = pd.read_csv(data_file)
 
