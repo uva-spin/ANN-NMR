@@ -12,7 +12,7 @@ import sys
 # version_number = str(sys.argv[1])
 # data_file = str(sys.argv[2])
 
-version_number = 'v7'
+version_number = 'v8'
 data_file = 'Sample_Testing_Data_v7_50K.csv'
 
 
@@ -23,7 +23,7 @@ results_dir = find_directory('Model Performance', start_dir='.')
 if not model_dir or not data_dir or not results_dir:
     raise FileNotFoundError("One or more required directories (Models, Testing_Data, Model Performance) could not be found.")
 
-model_filename = f'final_model_{version_number}.h5'
+model_filename = f'final_model_{version_number}.keras'
 data_file = os.path.join(data_dir, data_file)
 
 results_dir = os.path.join(results_dir, version_number)
@@ -32,7 +32,7 @@ os.makedirs(results_dir, exist_ok=True)
 model_file = find_file(model_filename, start_dir=model_dir)
 if model_file is None:
     raise FileNotFoundError(f"Model file '{model_filename}' not found.")
-Area_Model = load_model(r'Models\v7\final_model_v7.h5')
+Area_Model = load_model(model_file)
 
 df_Area = pd.read_csv(data_file)
 
