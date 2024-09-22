@@ -9,11 +9,11 @@ from Misc_Functions import *
 import sys 
 
 
-# version_number = str(sys.argv[1])
-# data_file = str(sys.argv[2])
+version_number = str(sys.argv[1])
+data_file = str(sys.argv[2])
 
-version_number = 'v7'
-data_file = 'Sample_Testing_Data_v7_50K.csv'
+# version_number = 'v9'
+# data_file = 'Sample_Testing_Data_v7_50K.csv'
 
 
 model_dir = find_directory('Models', start_dir='.')
@@ -23,7 +23,7 @@ results_dir = find_directory('Model Performance', start_dir='.')
 if not model_dir or not data_dir or not results_dir:
     raise FileNotFoundError("One or more required directories (Models, Testing_Data, Model Performance) could not be found.")
 
-model_filename = f'final_model_{version_number}.h5'
+model_filename = f'final_model_{version_number}.keras'
 data_file = os.path.join(data_dir, data_file)
 
 results_dir = os.path.join(results_dir, version_number)
@@ -43,13 +43,15 @@ SNR = df_Area['SNR'].to_numpy()
 Y_Area = Area_Model.predict(X_Area).reshape(-1)
 
 
-rel_err = np.abs((Y_Area - Area) / Area) * 100 
+# rel_err = np.abs((Y_Area - Area) / Area) * 100 
+
+area_diff = Y_Area - Area
 abs_err = np.abs(Y_Area - Area)
 
 result = pd.DataFrame({
     'Area_Predicted': Y_Area,
     'Area_True': Area,
-    'rel_err': rel_err,
+    'rel_err': area_diff,
     'abs_err': abs_err
 })
 result_file = os.path.join(results_dir, 'Results.csv')
@@ -58,7 +60,7 @@ print("Results successfully saved!")
 
 
 plot_histogram(
-    rel_err, 
+    area_diff, 
     'Histogram of Area Difference', 
     'Difference in Area', 
     'Count', 

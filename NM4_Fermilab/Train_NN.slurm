@@ -8,9 +8,8 @@
 
 module purge
 module load anaconda
-python -V
 source activate tf-2.7
 conda install scikit-learn
 export LD_LIBRARY_PATH=~/.conda/envs/tf-2.7/lib:$LD_LIBRARY_PATH
 
-python Training.py
+python Training.py $1

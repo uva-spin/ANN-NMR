@@ -64,7 +64,7 @@ df = pd.DataFrame(Signal_arr)
 df['Area'] = Area_arr
 df['SNR'] = SNR_arr
 
-file_path = '/home/ptgroup/Documents/Devin/Big_Data/Testing_Data'
+file_path = '/home/devin/Documents/Big_Data/Testing_Data'
 
 os.makedirs(file_path, exist_ok = True)
 
