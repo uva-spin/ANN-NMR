@@ -1,2 +1,0 @@
-EventNum,Polarization,Area,CalConst,Baseline,QMeterNum,QMeterName,MagCurrent,EIPFreq,HPFreq,uWaveFreq,uWavePower,FMAmplitude,FMOffset,ScanSweeps,ScanSteps,ScanFreq,RFFreq,RFMod,RFPower,YaleGain,DCLevel,He3Press,He3Temp,He4Temp,He4Press,SepFlow,MainFlow,MagLevel,RFVolts,LN2Level,VacPress,Comment,TopChip,BottomChip,CarbonGlass,Collector
-1719358330,,,-6.953900E+0,0,9,CH9,,,,,,,,5000,500,15287,213.000,400,275,0,,-13.586000,0.000000,2.004869,23.815000,20.640000,10.770000,,,,,,,,,

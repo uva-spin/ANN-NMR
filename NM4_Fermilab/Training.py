@@ -30,7 +30,7 @@ if physical_devices:
 
 tf.keras.mixed_precision.set_global_policy('mixed_float16')
 
-data_path = find_file("Sample_Data_V2_1M.csv")
+data_path = find_file("Sample_Data_V2_1M.csv") ### Change this here depending on what data file you want
 chunk_size = 10000
 chunks = pd.read_csv(data_path, chunksize=chunk_size)
 
@@ -56,7 +56,7 @@ x = df.drop(['Area', 'SNR'], axis=1)
 
 train_X, test_X, train_y, test_y = split_data(x, y)
 
-version = 'v8'
+version = 'v9' ### We can change the version number here
 performance_dir = f"Model Performance/{version}"
 model_dir = f"Models/{version}"
 os.makedirs(performance_dir, exist_ok=True)
@@ -77,13 +77,13 @@ with strategy.scope():
                 activation=hp.Choice(f'act_{i}', ['relu', 'relu6', 'swish','mish']),
                 kernel_regularizer=regularizers.L2(1e-6)
             ))
-            model.add(tf.keras.layers.Dropout(hp.Float(f'dropout_{i}', min_value=0.1, max_value=0.8, step=0.1)))
+            model.add(tf.keras.layers.Dropout(hp.Float(f'dropout_{i}', min_value=0.1, max_value=0.8, step=0.05)))
         
         model.add(tf.keras.layers.Dense(1, activation='sigmoid', dtype='float32'))  # Use float32 for final layer
 
         lr_schedule = hp.Choice('learning_rate', [1e-5, 1e-4, 5e-4])
         model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=lr_schedule),
-                      loss='mean_squared_error', metrics=['mean_squared_error'])
+                      loss='mean_squared_logarithmic_error', metrics=['mean_squared_logarithmic_error'])
         
         return model
 
@@ -114,9 +114,9 @@ callbacks_list = [
     ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=5, verbose=1, min_lr=1e-6),
     ModelCheckpoint(filepath=os.path.join(model_dir, f'best_model_{version}.keras'), save_best_only=True, monitor='val_loss', mode='min'),
 ]
-
+print("Beginning tuning process...")
 tuner.search(train_dataset, validation_data=test_dataset, epochs=15, callbacks=callbacks_list)
-
+print("Tuning process completed...")
 best_hps = tuner.get_best_hyperparameters(num_trials=1)[0]
 with strategy.scope():
     model_tuned = tuner.hypermodel.build(best_hps)
@@ -125,10 +125,13 @@ with strategy.scope():
 with open(os.path.join(performance_dir, f'model_summary_{version}.txt'), 'w') as f:
     model_tuned.summary(print_fn=lambda x: f.write(x + '\n'))
 
+print("Fitting model...")
 fitted_data = model_tuned.fit(train_dataset, validation_data=test_dataset,
                               epochs=20, callbacks=callbacks_list)  
+print("Model fitted...")
 
 model_tuned.save(os.path.join(model_dir, f'final_model_{version}.keras'))
+print("Model saved...")
 
 plt.figure()
 plt.plot(fitted_data.history['loss'])
@@ -138,4 +141,5 @@ plt.ylabel('Loss')
 plt.xlabel('Epoch')
 plt.legend(['Train', 'Validation'], loc='upper left')
 plt.savefig(os.path.join(performance_dir, f'loss_plot_{version}.png'))
+print("Loss plots saved at",performance_dir)
 
