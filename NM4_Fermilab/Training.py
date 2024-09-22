@@ -56,7 +56,7 @@ x = df.drop(['Area', 'SNR'], axis=1)
 
 train_X, test_X, train_y, test_y = split_data(x, y)
 
-version = 'v9' ### We can change the version number here
+version = 'v10' ### We can change the version number here
 performance_dir = f"Model Performance/{version}"
 model_dir = f"Models/{version}"
 os.makedirs(performance_dir, exist_ok=True)
@@ -77,11 +77,11 @@ with strategy.scope():
                 activation=hp.Choice(f'act_{i}', ['relu', 'relu6', 'swish','mish']),
                 kernel_regularizer=regularizers.L2(1e-6)
             ))
-            model.add(tf.keras.layers.Dropout(hp.Float(f'dropout_{i}', min_value=0.1, max_value=0.8, step=0.05)))
+            model.add(tf.keras.layers.Dropout(hp.Float(f'dropout_{i}', min_value=0.05, max_value=0.8, step=0.05)))
         
         model.add(tf.keras.layers.Dense(1, activation='sigmoid', dtype='float32'))  # Use float32 for final layer
 
-        lr_schedule = hp.Choice('learning_rate', [1e-5, 1e-4, 5e-4])
+        lr_schedule = hp.Choice('learning_rate', [1e-5, 1e-4, 5e-4,1e-6,1e-7])
         model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=lr_schedule),
                       loss='mean_squared_logarithmic_error', metrics=['mean_squared_logarithmic_error'])
         
@@ -102,7 +102,7 @@ test_dataset = create_dataset(test_X, test_y, batch_size)
 tuner = RandomSearch(
     Area_Model,
     objective='val_loss',
-    max_trials=3,  
+    max_trials=5,  
     executions_per_trial=1,  
     directory=log_dir,
     project_name="hyperparameter_tuning"
@@ -115,7 +115,7 @@ callbacks_list = [
     ModelCheckpoint(filepath=os.path.join(model_dir, f'best_model_{version}.keras'), save_best_only=True, monitor='val_loss', mode='min'),
 ]
 print("Beginning tuning process...")
-tuner.search(train_dataset, validation_data=test_dataset, epochs=15, callbacks=callbacks_list)
+tuner.search(train_dataset, validation_data=test_dataset, epochs=30, callbacks=callbacks_list)
 print("Tuning process completed...")
 best_hps = tuner.get_best_hyperparameters(num_trials=1)[0]
 with strategy.scope():
@@ -127,7 +127,7 @@ with open(os.path.join(performance_dir, f'model_summary_{version}.txt'), 'w') as
 
 print("Fitting model...")
 fitted_data = model_tuned.fit(train_dataset, validation_data=test_dataset,
-                              epochs=20, callbacks=callbacks_list)  
+                              epochs=50, callbacks=callbacks_list)  
 print("Model fitted...")
 
 model_tuned.save(os.path.join(model_dir, f'final_model_{version}.keras'))
