@@ -8,11 +8,7 @@
 #SBATCH --cpus-per-task=1               # Number of CPU cores per task
 #SBATCH --mem=1G                        # Memory per node
 
-# Load any necessary modules (if needed)
-# module load python/3.8
 
-# Display the hostname of the node that runs the job
 hostname
 
-# Optional: Print completion message
 echo "SLURM test job completed"
