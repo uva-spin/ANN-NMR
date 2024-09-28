@@ -30,11 +30,7 @@ if physical_devices:
 
 tf.keras.mixed_precision.set_global_policy('mixed_float16')
 
-<<<<<<< HEAD
 data_path = find_file("Sample_Data_V2_1M.csv")
-=======
-data_path = find_file("Sample_Data_V2_1M.csv") ### Change this here depending on what data file you want
->>>>>>> 485d8911707482acb79463586b71461f27571a0c
 chunk_size = 10000
 chunks = pd.read_csv(data_path, chunksize=chunk_size)
 
