@@ -30,7 +30,7 @@ if physical_devices:
 
 tf.keras.mixed_precision.set_global_policy('mixed_float16')
 
-data_path = find_file("Sample_Data_V2_1M.csv") ### Change this here depending on what data file you want
+data_path = find_file("Sample_Data_V2_1M.csv")
 chunk_size = 10000
 chunks = pd.read_csv(data_path, chunksize=chunk_size)
 
@@ -95,7 +95,7 @@ def create_dataset(X, y, batch_size):
     dataset = dataset.shuffle(buffer_size=1024).batch(batch_size).prefetch(tf.data.experimental.AUTOTUNE)
     return dataset
 
-batch_size = 32 
+batch_size = 128 
 train_dataset = create_dataset(train_X, train_y, batch_size)
 test_dataset = create_dataset(test_X, test_y, batch_size)
 
