@@ -96,15 +96,17 @@ def print_optimized_params_with_names(params, param_names):
     for name, param in zip(param_names, params):
         print(f"{name:>16}: {param:16.5e}")
 
-def plot_histogram(data, title, xlabel, ylabel, color, save_path, num_bins=100):
+def plot_histogram(data, title, xlabel, ylabel, color, save_path, num_bins=100, plot_norm=True):
     n, bins, patches = plt.hist(data, num_bins, density=True, color=color, alpha=0.7)
     mu, sigma = norm.fit(data)
-    y = norm.pdf(bins, mu, sigma)
-    plt.plot(bins, y, '--', color='black')
+    
+    if plot_norm:
+        y = norm.pdf(bins, mu, sigma)
+        plt.plot(bins, y, '--', color='black')
+    
+    plt.title(f"{title}: mu={mu:.4f}, sigma={sigma:.4f}")
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
-    plt.title(f"{title}: mu={mu:.4f}, sigma={sigma:.4f}")
-    plt.grid(True)
+    plt.grid(False)
     plt.savefig(save_path)
     plt.close()
-
