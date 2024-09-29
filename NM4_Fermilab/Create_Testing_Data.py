@@ -18,7 +18,8 @@ def human_format(number):
     return '%i%s' % (number / k**magnitude, units[magnitude])
 
 Signal_arr = []
-Area_arr = []
+P_arr = []
+#Area_arr = []
 SNR_arr = []
 
 for i in tqdm(range(int(sys.argv[1]))):
@@ -38,11 +39,16 @@ for i in tqdm(range(int(sys.argv[1]))):
 
     x, lower_bound, upper_bound = FrequencyBound(212.6)
 
-    signal = Voigt(x, amp, sig, gam, center)
+    # signal = Voigt(x, amp, sig, gam, center)
+
+    P = np.random.uniform(0,1)
+    
+    signal = GenerateLineshape(P)/100.0
 
     baseline = Baseline(x, U, Cknob, eta, cable, Cstray, phi, shift)
     # baseline = -0.001717*x **2 + 0.732*x - 77.99
 
+    
     combined_signal = signal + baseline
 
     noise = np.random.normal(0, 0.0005, size=x.shape)
@@ -57,18 +63,20 @@ for i in tqdm(range(int(sys.argv[1]))):
     area, _ = quad(Voigt, lower_bound, upper_bound, args=(amp, sig, gam, center))
 
     Signal_arr.append(noisy_signal)
-    Area_arr.append(area)
+    P_arr.append(P)
+    #Area_arr.append(area)
     SNR_arr.append(SNR)
 
 df = pd.DataFrame(Signal_arr)
-df['Area'] = Area_arr
+df['P'] = P_arr
+#df['Area'] = Area_arr
 df['SNR'] = SNR_arr
 
-file_path = '/home/devin/Documents/Big_Data/Testing_Data'
+file_path = '/home/devin/Documents/Big_Data/Testing_Data_Deuteron'
 
 os.makedirs(file_path, exist_ok = True)
 
-version = 'v7'
+version = 'v4'
 
 try:
     df.to_csv(os.path.join(file_path,f'Sample_Testing_Data_{version}_' + str(human_format(int(sys.argv[1])) + '.csv')), index=False)
