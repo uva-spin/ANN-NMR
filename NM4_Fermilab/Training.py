@@ -100,8 +100,8 @@ with strategy.scope():
         
         return model
 
-log_dir = os.path.join("NMR", datetime.datetime.now().strftime("%m%d-%H%M"))
-os.makedirs(log_dir, exist_ok=True)
+# log_dir = os.path.join("NMR", datetime.datetime.now().strftime("%m%d-%H%M"))
+# os.makedirs(log_dir, exist_ok=True)  ## This takes up wayyy too much space way too quickly
 
 def create_dataset(X, y, batch_size):
     dataset = tf.data.Dataset.from_tensor_slices((X.values, y.values))
