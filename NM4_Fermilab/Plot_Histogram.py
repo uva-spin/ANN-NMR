@@ -15,12 +15,10 @@ df['Area_Diff'] = df['Area_Predicted'] - df['Area_True']
 abs_err = np.abs(df['Area_Predicted'] - df['Area_True'])
 
 
-fig = plt.figure(figsize=(16, 6))  # Adjusting the overall figure size
+fig = plt.figure(figsize=(16, 6))  
 
-# Use gridspec to manage subplot sizes
-gs = fig.add_gridspec(1, 2)  # Two rows for histograms
+gs = fig.add_gridspec(1, 2)  
 
-# Plot the first histogram for Area Difference
 ax1 = fig.add_subplot(gs[0])
 
 plot_histogram(
@@ -56,7 +54,6 @@ ax2.text(0.5, -0.2, '(b)', transform=ax2.transAxes,
 
 plt.tight_layout()
 plt.subplots_adjust(bottom=0.2)
-# plt.show()
 
 output_path = os.path.join(".", 'Proton_Histograms.png')
 fig.savefig(output_path,dpi=600)

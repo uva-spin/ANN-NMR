@@ -44,13 +44,14 @@ df = pd.concat(df_list)
 def split_data(X, y, split=0.25):
     temp_idx = np.random.choice(len(y), size=int(len(y) * split), replace=False)
     
-    tst_X = X.iloc[temp_idx].reset_index(drop=True)
-    trn_X = X.drop(temp_idx).reset_index(drop=True)
+    tst_X = X[temp_idx]
+    trn_X = np.delete(X, temp_idx, axis=0)
     
-    tst_y = y.iloc[temp_idx].reset_index(drop=True)
-    trn_y = y.drop(temp_idx).reset_index(drop=True)
+    tst_y = y[temp_idx]
+    trn_y = np.delete(y, temp_idx, axis=0)
     
     return trn_X, tst_X, trn_y, tst_y
+
 
 target_variable = "P"
 
@@ -104,7 +105,7 @@ with strategy.scope():
 # os.makedirs(log_dir, exist_ok=True)  ## This takes up wayyy too much space way too quickly
 
 def create_dataset(X, y, batch_size):
-    dataset = tf.data.Dataset.from_tensor_slices((X.values, y.values))
+    dataset = tf.data.Dataset.from_tensor_slices((X, y))
     dataset = dataset.shuffle(buffer_size=1024).batch(batch_size).prefetch(tf.data.experimental.AUTOTUNE)
     return dataset
 
@@ -117,8 +118,8 @@ tuner = RandomSearch(
     objective='val_loss',
     max_trials=3,  
     executions_per_trial=1,  
-    directory=log_dir,
-    project_name="hyperparameter_tuning"
+    # directory=log_dir,
+    # project_name="hyperparameter_tuning"
 )
 
 def scheduler(epoch, lr):
