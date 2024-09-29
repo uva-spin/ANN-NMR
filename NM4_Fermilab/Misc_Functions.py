@@ -96,7 +96,7 @@ def print_optimized_params_with_names(params, param_names):
     for name, param in zip(param_names, params):
         print(f"{name:>16}: {param:16.5e}")
 
-def plot_histogram(data, title, xlabel, ylabel, color, ax, save_path, num_bins=100, plot_norm=True):
+def plot_histogram(data, title, xlabel, ylabel, color, ax, num_bins=100, plot_norm=True):
     n, bins, patches = plt.hist(data, num_bins, density=True, color=color, alpha=0.7)
     mu, sigma = norm.fit(data)
 
@@ -104,13 +104,13 @@ def plot_histogram(data, title, xlabel, ylabel, color, ax, save_path, num_bins=1
         y = norm.pdf(bins, mu, sigma)
         plt.plot(bins, y, '--', color='black')
 
-    plt.title(f"{title}: μ={mu:.4f}, σ={sigma:.4f}", fontsize = 20)
-    plt.xlabel(xlabel, fontsize = 16)
-    plt.ylabel(ylabel, fontsize = 16)
-    ax.tick_params(axis='both', which='major', labelsize=16)  
-    ax.tick_params(axis='both', which='minor', labelsize=16)  
+    plt.title(f"{title}: μ={mu:.4f}, σ={sigma:.4f}", fontsize = 16,weight='bold')
+    plt.xlabel(xlabel, fontsize = 16,weight='bold')
+    plt.ylabel(ylabel, fontsize = 16,weight='bold')
+    ax.tick_params(axis='both', which='major', labelsize=12)  
+    ax.tick_params(axis='both', which='minor', labelsize=12)  
     plt.grid(False)
-    plt.savefig(save_path)
+    # plt.savefig(save_path)
     # plt.close()
 
 

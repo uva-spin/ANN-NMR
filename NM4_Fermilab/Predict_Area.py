@@ -42,40 +42,67 @@ SNR = df_Area['SNR'].to_numpy()
 
 Y_Area = Area_Model.predict(X_Area).reshape(-1)
 
+if len(Y_Area) != len(Area):
+    print("Error: Mismatch in lengths of predicted and true values.")
+else:
+    area_diff = Y_Area.flatten() - Area
+    abs_err = np.abs(Y_Area.flatten() - Area)
 
-# rel_err = np.abs((Y_Area - Area) / Area) * 100 
+    results = pd.DataFrame({
+        'P_Predicted': Y_Area.flatten(),
+        'P_True': Area,
+        'rel_err': area_diff,
+        'abs_err': abs_err
+    })
 
-area_diff = Y_Area - Area
-abs_err = np.abs(Y_Area - Area)
+    result_file = os.path.join(results_dir, 'Results.csv')
+    results.to_csv(result_file, index=False)
+    print("Results successfully saved!")
 
-result = pd.DataFrame({
-    'Area_Predicted': Y_Area,
-    'Area_True': Area,
-    'rel_err': area_diff,
-    'abs_err': abs_err
-})
-result_file = os.path.join(results_dir, 'Results.csv')
-result.to_csv(result_file, index=False)
-print("Results successfully saved!")
+    fig = plt.figure(figsize=(16, 6))  
 
+    gs = fig.add_gridspec(1, 2)  
 
-plot_histogram(
-    area_diff, 
-    'Histogram of Area Difference', 
-    'Difference in Area', 
-    'Count', 
-    'green', 
-    os.path.join(results_dir, 'Histogram_Area_Difference.png')
-)
+    ax1 = fig.add_subplot(gs[0])
 
-plot_histogram(
-    abs_err, 
-    'Histogram of Absolute Error', 
-    'Absolute Error', 
-    'Count', 
-    'blue', 
-    os.path.join(results_dir, 'Histogram_Absolute_Error.png')
-)
+    plot_histogram(
+        area_diff, 
+        'Histogram of Area Difference', 
+        'Difference in Area', 
+        'Count', 
+        'blue', 
+        ax1,
+        # os.path.join(results_dir, 'Proton_Histogram_Area_Difference.png'),
+        plot_norm=False
+    )
+    subplot1_path = os.path.join(results_dir, 'Proton_Histogram_Area_Difference.png')
+    ax1.figure.savefig(subplot1_path, dpi=600)
+    print(f"Individual subplot saved: {subplot1_path}")
 
-print("Histograms saved.")
+    ax2 = fig.add_subplot(gs[1])
+    plot_histogram(
+        abs_err,
+        'Histogram of Absolute Error',
+        'Absolute Error',
+        '',
+        'green',
+        ax2,
+        plot_norm=False
+    )
+
+    subplot2_path = os.path.join(results_dir, 'Proton_Histogram_Absolute_Error.png')
+    ax2.figure.savefig(subplot2_path, dpi=600)
+    print(f"Individual subplot saved: {subplot2_path}")
+
+    ax1.text(0.5, -0.2, '(a)', transform=ax1.transAxes,
+         ha='center', fontsize=16)
+    ax2.text(0.5, -0.2, '(b)', transform=ax2.transAxes,
+         ha='center', fontsize=16)
+
+    plt.tight_layout()
+    plt.subplots_adjust(bottom=0.2)
+
+    output_path = os.path.join(results_dir, 'Proton_Histograms.png')
+    fig.savefig(output_path, dpi=600)
+    print(f"Entire figure saved: {output_path}")
 

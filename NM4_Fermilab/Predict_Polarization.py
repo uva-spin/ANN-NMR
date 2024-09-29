@@ -79,38 +79,40 @@ else:
 
     plot_histogram(
         P_diff, 
-        'Histogram of Polarization Difference', 
-        'Difference in Polarization', 
+        'Histogram of Area Difference', 
+        'Difference in Area', 
         'Count', 
-        'red', 
+        'blue', 
         ax1,
-        os.path.join(results_dir, 'Histogram_P_Difference.png'),
         plot_norm=False
     )
+    subplot1_path = os.path.join(results_dir, 'Deuteron_Histogram_Polarization_Difference.png')
+    ax1.figure.savefig(subplot1_path, dpi=600)
+    print(f"Individual subplot saved: {subplot1_path}")
 
     ax2 = fig.add_subplot(gs[1])
-
     plot_histogram(
-        abs_err, 
-        'Histogram of Absolute Error', 
-        'Absolute Error', 
-        '', 
-        'orange',
-        ax2, 
-        os.path.join(results_dir, 'Histogram_Absolute_Error.png'),
+        abs_err,
+        'Histogram of Absolute Error',
+        'Absolute Error',
+        '',
+        'green',
+        ax2,
         plot_norm=False
     )
 
-    ax1.text(0.5, -0.2, '(a)', transform=ax1.transAxes, 
+    subplot2_path = os.path.join(results_dir, 'Deuteron_Histogram_Absolute_Error.png')
+    ax2.figure.savefig(subplot2_path, dpi=600)
+    print(f"Individual subplot saved: {subplot2_path}")
+
+    ax1.text(0.5, -0.2, '(a)', transform=ax1.transAxes,
          ha='center', fontsize=16)
-    ax2.text(0.5, -0.2, '(b)', transform=ax2.transAxes, 
+    ax2.text(0.5, -0.2, '(b)', transform=ax2.transAxes,
          ha='center', fontsize=16)
 
     plt.tight_layout()
     plt.subplots_adjust(bottom=0.2)
 
     output_path = os.path.join(results_dir, 'Deuteron_Histograms.png')
-    fig.savefig(output_path,dpi=600)
-
-
-    print("Histograms saved.")
+    fig.savefig(output_path, dpi=600)
+    print(f"Entire figure saved: {output_path}")
