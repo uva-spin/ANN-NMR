@@ -40,7 +40,7 @@ for i in tqdm(range(1000)):
 
     combined_signal = signal + baseline
 
-    noise = np.random.normal(0, 0.0005, size=x.shape)
+    noise = np.random.normal(0, 2e-5, size=x.shape)
     # noise = 0
 
     noisy_signal = combined_signal + noise
