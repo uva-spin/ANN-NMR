@@ -32,7 +32,7 @@ if physical_devices:
 
 tf.keras.mixed_precision.set_global_policy('mixed_float16')
 
-data_path = find_file("Sample_Data_Deuteron_1M_V4.csv")
+data_path = find_file("Sample_Data_Deuteron_1M_V3.csv")
 chunk_size = 10000
 chunks = pd.read_csv(data_path, chunksize=chunk_size)
 
@@ -66,7 +66,7 @@ y_scaled = scaler_y.fit_transform(y.values.reshape(-1,1))
 
 train_X, test_X, train_y, test_y = split_data(x_scaled, y_scaled)
 
-version = 'Deuteron_v7' ### We can change the version number here
+version = 'Deuteron_v8' ### We can change the version number here
 performance_dir = f"Model Performance/{version}"
 model_dir = f"Models/{version}"
 os.makedirs(performance_dir, exist_ok=True)

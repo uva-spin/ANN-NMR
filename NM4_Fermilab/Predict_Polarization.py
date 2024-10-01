@@ -36,7 +36,7 @@ os.makedirs(results_dir, exist_ok=True)
 model_file = find_file(model_filename, start_dir=model_dir)
 if model_file is None:
     raise FileNotFoundError(f"Model file '{model_filename}' not found.")
-P_Model = load_model(model_file)
+P_Model = load_model('Models/Deuteron_v7/final_model_Deuteron_v7.keras')
 
 df_P = pd.read_csv(data_file, dtype={'P': 'float32', 'SNR': 'float32'})
 
