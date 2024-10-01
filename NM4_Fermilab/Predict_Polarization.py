@@ -79,8 +79,8 @@ else:
 
     plot_histogram(
         P_diff, 
-        'Histogram of Area Difference', 
-        'Difference in Area', 
+        'Histogram of Polarization Difference', 
+        'Difference in Polarization', 
         'Count', 
         'blue', 
         ax1,
