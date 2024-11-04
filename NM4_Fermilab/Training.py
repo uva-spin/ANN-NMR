@@ -26,38 +26,21 @@ if physical_devices:
 
 tf.keras.mixed_precision.set_global_policy('mixed_float16')
 
-def data_generator(file_path, chunk_size=10000, batch_size=1024):
-    for chunk in pd.read_csv(file_path, chunksize=chunk_size):
-        target_variable = "P"
-        X = chunk.drop([target_variable, 'SNR'], axis=1).values  
-        y = chunk[target_variable].values
-        dataset = tf.data.Dataset.from_tensor_slices((X, y))
-        dataset = dataset.batch(batch_size).prefetch(tf.data.experimental.AUTOTUNE)
-        for batch in dataset:
-            yield batch
 
-def split_data_in_batches(data_generator, val_fraction=0.1):
-    for X_batch, y_batch in data_generator:
-        split_index = int(X_batch.shape[0] * (1 - val_fraction))
-        X_train_batch, X_val_batch = X_batch[:split_index], X_batch[split_index:]
-        y_train_batch, y_val_batch = y_batch[:split_index], y_batch[split_index:]
-        yield (X_train_batch, y_train_batch), (X_val_batch, y_val_batch)
-
-def test_data_generator(file_path, chunk_size=10000, test_fraction=0.1):
-    test_data = pd.read_csv(file_path, chunksize=chunk_size)
-    test_df = pd.concat([chunk for chunk in test_data]).sample(frac=test_fraction)
-    target_variable = "P"
-    X_test = test_df.drop([target_variable, 'SNR'], axis=1).values
-    y_test = test_df[target_variable].values
-    test_dataset = tf.data.Dataset.from_tensor_slices((X_test, y_test)).batch(1024).prefetch(tf.data.experimental.AUTOTUNE)
-    return test_dataset
-
-data_path = find_file("Deuteron_V7_2_100_No_Noise_500K.csv")
-version = 'Deuteron_2_100_v13'
+data_path = find_file("Deuteron_2_100_No_Noise_500K.csv")
+version = 'Deuteron_2_100_v14'
 performance_dir = f"Model Performance/{version}"
 model_dir = f"Models/{version}"
 os.makedirs(performance_dir, exist_ok=True)
 os.makedirs(model_dir, exist_ok=True)
+
+def weighted_huber_loss(y_true, y_pred, delta=.1):
+    error = y_true - y_pred
+    is_small_error = tf.abs(error) <= delta
+    small_error_loss = tf.square(error) / 2
+    large_error_loss = delta * (tf.abs(error) - 0.5 * delta)
+    weighted_loss = tf.where(is_small_error, small_error_loss, large_error_loss)
+    return tf.reduce_mean(weighted_loss * tf.abs(error + 1)) 
 
 def Polarization():
     model = tf.keras.Sequential()
@@ -66,34 +49,27 @@ def Polarization():
     model.add(tf.keras.layers.BatchNormalization(momentum=0.95, epsilon=0.005,
                                                  beta_initializer=tf.keras.initializers.RandomNormal(0.0, 0.1), 
                                                  gamma_initializer=tf.keras.initializers.Constant(value=0.9)))
-    model.add(tf.keras.layers.Dense(units=256, activation='swish', kernel_regularizer=regularizers.L2(1e-3)))
+    model.add(tf.keras.layers.Dense(units=256, activation='relu6', kernel_regularizer=regularizers.L2(1e-3)))
 
     model.add(tf.keras.layers.BatchNormalization(momentum=0.95, epsilon=0.005,
                                                  beta_initializer=tf.keras.initializers.RandomNormal(0.0, 0.1), 
                                                  gamma_initializer=tf.keras.initializers.Constant(value=0.9)))
-    model.add(tf.keras.layers.Dense(units=256, activation='swish', kernel_regularizer=regularizers.L2(1e-3)))
+    model.add(tf.keras.layers.Dense(units=256, activation='relu6', kernel_regularizer=regularizers.L2(1e-3)))
 
-    model.add(tf.keras.layers.BatchNormalization(momentum=0.95, epsilon=0.005,
-                                                 beta_initializer=tf.keras.initializers.RandomNormal(0.0, 0.1), 
-                                                 gamma_initializer=tf.keras.initializers.Constant(value=0.9)))
-    model.add(tf.keras.layers.Dense(units=256, activation='swish', kernel_regularizer=regularizers.L2(1e-3)))
+    # model.add(tf.keras.layers.BatchNormalization(momentum=0.95, epsilon=0.005,
+    #                                              beta_initializer=tf.keras.initializers.RandomNormal(0.0, 0.1), 
+    #                                              gamma_initializer=tf.keras.initializers.Constant(value=0.9)))
+    # model.add(tf.keras.layers.Dense(units=256, activation='relu6', kernel_regularizer=regularizers.L2(1e-3)))
 
-    model.add(tf.keras.layers.BatchNormalization(momentum=0.95, epsilon=0.005,
-                                                 beta_initializer=tf.keras.initializers.RandomNormal(0.0, 0.1), 
-                                                 gamma_initializer=tf.keras.initializers.Constant(value=0.9)))
-    model.add(tf.keras.layers.Dense(units=256, activation='elu', kernel_regularizer=regularizers.L2(1e-3)))
+    # model.add(tf.keras.layers.BatchNormalization(momentum=0.95, epsilon=0.005,
+    #                                              beta_initializer=tf.keras.initializers.RandomNormal(0.0, 0.1), 
+    #                                              gamma_initializer=tf.keras.initializers.Constant(value=0.9)))
+    # model.add(tf.keras.layers.Dense(units=256, activation='relu6', kernel_regularizer=regularizers.L2(1e-3)))
     
     model.add(tf.keras.layers.Dense(1, activation='sigmoid'))
 
-    optimizer = tf.keras.optimizers.Adam(learning_rate=5e-5, amsgrad=True)
+    optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4, amsgrad=True)
 
-    def weighted_huber_loss(y_true, y_pred, delta=1.0):
-        error = y_true - y_pred
-        is_small_error = tf.abs(error) <= delta
-        small_error_loss = tf.square(error) / 2
-        large_error_loss = delta * (tf.abs(error) - 0.5 * delta)
-        weighted_loss = tf.where(is_small_error, small_error_loss, large_error_loss)
-        return tf.reduce_mean(weighted_loss * tf.abs(error + 1)) 
 
     model.compile(
         optimizer=optimizer,
@@ -143,7 +119,6 @@ history = model.fit(
     batch_size=16,
     callbacks=callbacks_list
 )
-
 
 
 plt.figure(figsize=(10, 6))
