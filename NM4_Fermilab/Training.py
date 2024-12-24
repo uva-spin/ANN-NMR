@@ -9,7 +9,6 @@ from Misc_Functions import *
 from datetime import datetime
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-tf.debugging.set_log_device_placement(True)
 
 print("Available devices:")
 for device in tf.config.list_physical_devices():
@@ -27,62 +26,50 @@ if physical_devices:
 tf.keras.mixed_precision.set_global_policy('mixed_float16')
 
 
-data_path = find_file("Deuteron_2_100_No_Noise_500K.csv")
-version = 'Deuteron_2_100_v14'
+data_path = find_file("Deuteron_V8_2_100_No_Noise_500K.csv")
+version = 'Deuteron_2_100_v16'
 performance_dir = f"Model Performance/{version}"
 model_dir = f"Models/{version}"
 os.makedirs(performance_dir, exist_ok=True)
 os.makedirs(model_dir, exist_ok=True)
 
-def weighted_huber_loss(y_true, y_pred, delta=.1):
-    error = y_true - y_pred
-    is_small_error = tf.abs(error) <= delta
-    small_error_loss = tf.square(error) / 2
-    large_error_loss = delta * (tf.abs(error) - 0.5 * delta)
-    weighted_loss = tf.where(is_small_error, small_error_loss, large_error_loss)
-    return tf.reduce_mean(weighted_loss * tf.abs(error + 1)) 
 
-def Polarization():
+def Polarization(): 
     model = tf.keras.Sequential()
-    model.add(tf.keras.Input(shape=(500,)))  
+    model.add(tf.keras.Input(shape=(500,))) 
 
-    model.add(tf.keras.layers.BatchNormalization(momentum=0.95, epsilon=0.005,
-                                                 beta_initializer=tf.keras.initializers.RandomNormal(0.0, 0.1), 
-                                                 gamma_initializer=tf.keras.initializers.Constant(value=0.9)))
-    model.add(tf.keras.layers.Dense(units=256, activation='relu6', kernel_regularizer=regularizers.L2(1e-3)))
-
-    model.add(tf.keras.layers.BatchNormalization(momentum=0.95, epsilon=0.005,
-                                                 beta_initializer=tf.keras.initializers.RandomNormal(0.0, 0.1), 
-                                                 gamma_initializer=tf.keras.initializers.Constant(value=0.9)))
-    model.add(tf.keras.layers.Dense(units=256, activation='relu6', kernel_regularizer=regularizers.L2(1e-3)))
-
-    # model.add(tf.keras.layers.BatchNormalization(momentum=0.95, epsilon=0.005,
-    #                                              beta_initializer=tf.keras.initializers.RandomNormal(0.0, 0.1), 
-    #                                              gamma_initializer=tf.keras.initializers.Constant(value=0.9)))
-    # model.add(tf.keras.layers.Dense(units=256, activation='relu6', kernel_regularizer=regularizers.L2(1e-3)))
-
-    # model.add(tf.keras.layers.BatchNormalization(momentum=0.95, epsilon=0.005,
-    #                                              beta_initializer=tf.keras.initializers.RandomNormal(0.0, 0.1), 
-    #                                              gamma_initializer=tf.keras.initializers.Constant(value=0.9)))
-    # model.add(tf.keras.layers.Dense(units=256, activation='relu6', kernel_regularizer=regularizers.L2(1e-3)))
+    model.add(tf.keras.layers.BatchNormalization())
+    model.add(tf.keras.layers.Dense(
+        units=256, activation='relu6', kernel_regularizer=regularizers.L2(1e-2)
+    ))
+    model.add(tf.keras.layers.Dropout(0.2))  
+    model.add(tf.keras.layers.BatchNormalization())
+    model.add(tf.keras.layers.Dense(
+        units=128, activation='relu6', kernel_regularizer=regularizers.L2(1e-2)
+    ))
+    model.add(tf.keras.layers.Dropout(0.2))
     
-    model.add(tf.keras.layers.Dense(1, activation='sigmoid'))
+    model.add(tf.keras.layers.BatchNormalization())
+    model.add(tf.keras.layers.Dense(
+        units=64, activation='relu6', kernel_regularizer=regularizers.L2(1e-2)
+    ))
+    model.add(tf.keras.layers.Dropout(0.2))
 
-    optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4, amsgrad=True)
-
+    model.add(tf.keras.layers.Dense(1, activation='sigmoid', dtype='float32'))  
 
     model.compile(
-        optimizer=optimizer,
-        loss=weighted_huber_loss,
+            optimizer = tf.keras.optimizers.AdamW(learning_rate=1e-4, weight_decay=1e-4),
+        loss='mse',
         metrics=['mse']
     )
 
     return model
 
 
+
 callbacks_list = [
     CSVLogger(os.path.join(performance_dir, f'training_log_{version}.csv'), append=True, separator=';'),
-    EarlyStopping(monitor='val_loss', mode='min', patience=10, verbose=0, restore_best_weights=True),
+    EarlyStopping(monitor='val_loss', mode='min', patience=8, verbose=0, restore_best_weights=True),
     ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, verbose=0, min_lr=1e-10),
     ModelCheckpoint(filepath=os.path.join(model_dir, f'best_model_{version}.keras'), save_best_only=True, monitor='val_loss', mode='min')
 ]
@@ -90,7 +77,7 @@ callbacks_list = [
 
 data = pd.read_csv(data_path)
 
-val_fraction = 0.1
+val_fraction = 0.2
 test_fraction = 0.1
 
 train_split_index = int(len(data) * (1 - val_fraction - test_fraction))
@@ -105,18 +92,19 @@ X_train, y_train = train_data.drop([target_variable, 'SNR'], axis=1).values, tra
 X_val, y_val = val_data.drop([target_variable, 'SNR'], axis=1).values, val_data[target_variable].values
 X_test, y_test = test_data.drop([target_variable, 'SNR'], axis=1).values, test_data[target_variable].values
 
-train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train)).batch(256).prefetch(tf.data.experimental.AUTOTUNE)
-val_dataset = tf.data.Dataset.from_tensor_slices((X_val, y_val)).batch(256).prefetch(tf.data.experimental.AUTOTUNE)
-test_dataset = tf.data.Dataset.from_tensor_slices((X_test, y_test)).batch(256).prefetch(tf.data.experimental.AUTOTUNE)
 
-model = Polarization()
+strategy = tf.distribute.MirroredStrategy()
+
+with strategy.scope():
+    model = Polarization()
 
 print("Starting training on full dataset...")
 history = model.fit(
-    train_dataset,
-    validation_data=val_dataset,
-    epochs=150,
-    batch_size=16,
+    X_train,
+    y_train, 
+    validation_data=(X_val, y_val), 
+    epochs=200,
+    batch_size=32,
     callbacks=callbacks_list
 )
 
@@ -144,7 +132,7 @@ model.save(os.path.join(model_dir, f'final_model_{version}.keras'))
 
 print("Evaluating on test data...")
 
-test_loss, test_mse = model.evaluate(test_dataset)
+test_loss, test_mse = model.evaluate(X_test, y_test, batch_size=16)
 
 y_test_pred = model.predict(X_test)
 residuals = y_test - y_test_pred.flatten()

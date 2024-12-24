@@ -171,9 +171,14 @@ def Baseline(f, U, Cknob, eta, trim, Cstray, phi_const, DC_offset):
     L0, Rcoil, R, R1, r, alpha, beta1, Z_cable, D, M, delta_C, delta_phi, delta_phase, delta_l = circ_consts
 
     I = U*1000/R  # Ideal constant current, mA
-    w_res = 2 * pi * 213e6
-    w_low = 2 * pi * (213 - 4) * 1e6
-    w_high = 2 * pi * (213 + 4) * 1e6
+    # w_res = 2 * pi * 213e6
+    # w_low = 2 * pi * (213 - 4) * 1e6
+    # w_high = 2 * pi * (213 + 4) * 1e6
+    # delta_w = 2 * pi * 4e6 / 500
+
+    w_res = 2 * pi * 32e6
+    w_low = 2 * pi * (32 - 4) * 1e6
+    w_high = 2 * pi * (32 + 4) * 1e6
     delta_w = 2 * pi * 4e6 / 500
 
     # Convert frequency to angular frequency (rad/s)
