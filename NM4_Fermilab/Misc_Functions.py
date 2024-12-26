@@ -114,3 +114,30 @@ def plot_histogram(data, title, xlabel, ylabel, color, ax, num_bins=100, plot_no
     # plt.close()
 
 
+def data_generator(file_path, chunk_size=10000, batch_size=1024):
+    for chunk in pd.read_csv(file_path, chunksize=chunk_size):
+        target_variable = "P"
+        X = chunk.drop([target_variable, 'SNR'], axis=1).values  
+        y = chunk[target_variable].values
+        dataset = tf.data.Dataset.from_tensor_slices((X, y))
+        dataset = dataset.batch(batch_size).prefetch(tf.data.experimental.AUTOTUNE)
+        for batch in dataset:
+            yield batch
+
+def split_data_in_batches(data_generator, val_fraction=0.1):
+    for X_batch, y_batch in data_generator:
+        split_index = int(X_batch.shape[0] * (1 - val_fraction))
+        X_train_batch, X_val_batch = X_batch[:split_index], X_batch[split_index:]
+        y_train_batch, y_val_batch = y_batch[:split_index], y_batch[split_index:]
+        yield (X_train_batch, y_train_batch), (X_val_batch, y_val_batch)
+
+def test_data_generator(file_path, chunk_size=10000, test_fraction=0.1):
+    test_data = pd.read_csv(file_path, chunksize=chunk_size)
+    test_df = pd.concat([chunk for chunk in test_data]).sample(frac=test_fraction)
+    target_variable = "P"
+    X_test = test_df.drop([target_variable, 'SNR'], axis=1).values
+    y_test = test_df[target_variable].values
+    test_dataset = tf.data.Dataset.from_tensor_slices((X_test, y_test)).batch(1024).prefetch(tf.data.experimental.AUTOTUNE)
+    return test_dataset
+
+

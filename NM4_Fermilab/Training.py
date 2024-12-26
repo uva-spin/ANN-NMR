@@ -2,7 +2,7 @@ import os
 import numpy as np
 import pandas as pd
 import tensorflow as tf
-from tensorflow.keras import regularizers
+from tensorflow.keras import regularizers, initializers
 from tensorflow.keras.callbacks import CSVLogger, EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
 import matplotlib.pyplot as plt
 from Misc_Functions import *
@@ -27,15 +27,13 @@ tf.keras.mixed_precision.set_global_policy('mixed_float16')
 
 
 data_path = find_file("Deuteron_V8_2_100_No_Noise_500K.csv")
-version = 'Deuteron_2_100_v18'
+version = 'Deuteron_2_100_v19'
 performance_dir = f"Model Performance/{version}"
 model_dir = f"Models/{version}"
 os.makedirs(performance_dir, exist_ok=True)
 os.makedirs(model_dir, exist_ok=True)
 
 
-import tensorflow as tf
-from tensorflow.keras import regularizers, initializers
 
 def Polarization():
     model = tf.keras.Sequential()
@@ -43,7 +41,7 @@ def Polarization():
 
     model.add(tf.keras.layers.BatchNormalization())
     model.add(tf.keras.layers.Dense(
-        units=128, activation='swish', kernel_initializer=initializers.HeNormal()
+        units=500, activation='swish', kernel_initializer=initializers.HeNormal()
     ))
     model.add(tf.keras.layers.Dropout(0.3))
     model.add(tf.keras.layers.BatchNormalization())
@@ -59,7 +57,7 @@ def Polarization():
     ))
     model.add(tf.keras.layers.BatchNormalization())
 
-    model.add(tf.keras.layers.Dense(1, activation='sigmoid', dtype='float32'))
+    model.add(tf.keras.layers.Dense(1, activation='linear', dtype='float32'))
 
     optimizer = tf.keras.optimizers.AdamW(learning_rate=1e-3, clipnorm=1.0)
 
@@ -94,7 +92,7 @@ test_data = data.iloc[val_split_index:]
 target_variable = "P"
 X_train, y_train = train_data.drop([target_variable, 'SNR'], axis=1).values, (train_data[target_variable].values)
 X_val, y_val = val_data.drop([target_variable, 'SNR'], axis=1).values, (val_data[target_variable].values)
-X_test, y_test = test_data.drop([target_variable, 'SNR'], axis=1).values, (test_data[target_variable].values)
+X_test, y_test = test_data.drop([target_variable, 'SNR'], axis=1).values, test_data[target_variable].values
 
 
 strategy = tf.distribute.MirroredStrategy()
@@ -108,7 +106,7 @@ history = model.fit(
     y_train, 
     validation_data=(X_val, y_val), 
     epochs=200,
-    batch_size=32,
+    batch_size=1,
     callbacks=callbacks_list
 )
 
@@ -134,9 +132,11 @@ with open(model_summary_path, 'w') as f:
 
 model.save(os.path.join(model_dir, f'final_model_{version}.keras'))
 
+# model = tf.keras.models.load_model('Models/Deuteron_2_100_v18/final_model_Deuteron_2_100_v18.keras')
+
 print("Evaluating on test data...")
 
-test_loss, test_mse = model.evaluate(X_test, y_test, batch_size=16)
+test_loss, test_mse, *is_anything_else_being_returned  = model.evaluate(X_test, y_test, batch_size=32)
 
 y_test_pred = model.predict(X_test)
 residuals = y_test - y_test_pred.flatten()
@@ -209,4 +209,4 @@ summary_results_df.to_csv(summary_results_file, index=False)
 
 print(f"Test Loss: {test_loss}, Test MSE: {test_mse}")
 print(f"Test summary results saved to {summary_results_file}")
-print(f"Model summary saved to {model_summary_path}")
+# print(f"Model summary saved to {model_summary_path}")
