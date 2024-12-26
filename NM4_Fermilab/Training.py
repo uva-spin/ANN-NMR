@@ -27,43 +27,47 @@ tf.keras.mixed_precision.set_global_policy('mixed_float16')
 
 
 data_path = find_file("Deuteron_V8_2_100_No_Noise_500K.csv")
-version = 'Deuteron_2_100_v16'
+version = 'Deuteron_2_100_v18'
 performance_dir = f"Model Performance/{version}"
 model_dir = f"Models/{version}"
 os.makedirs(performance_dir, exist_ok=True)
 os.makedirs(model_dir, exist_ok=True)
 
 
-def Polarization(): 
+import tensorflow as tf
+from tensorflow.keras import regularizers, initializers
+
+def Polarization():
     model = tf.keras.Sequential()
-    model.add(tf.keras.Input(shape=(500,))) 
+    model.add(tf.keras.Input(shape=(500,)))
 
     model.add(tf.keras.layers.BatchNormalization())
     model.add(tf.keras.layers.Dense(
-        units=256, activation='relu6', kernel_regularizer=regularizers.L2(1e-2)
+        units=128, activation='swish', kernel_initializer=initializers.HeNormal()
     ))
-    model.add(tf.keras.layers.Dropout(0.2))  
+    model.add(tf.keras.layers.Dropout(0.3))
     model.add(tf.keras.layers.BatchNormalization())
+
     model.add(tf.keras.layers.Dense(
-        units=128, activation='relu6', kernel_regularizer=regularizers.L2(1e-2)
-    ))
-    model.add(tf.keras.layers.Dropout(0.2))
-    
-    model.add(tf.keras.layers.BatchNormalization())
-    model.add(tf.keras.layers.Dense(
-        units=64, activation='relu6', kernel_regularizer=regularizers.L2(1e-2)
+        units=64, activation='swish', kernel_initializer=initializers.HeNormal()
     ))
     model.add(tf.keras.layers.Dropout(0.2))
+    model.add(tf.keras.layers.BatchNormalization())
 
-    model.add(tf.keras.layers.Dense(1, activation='sigmoid', dtype='float32'))  
+    model.add(tf.keras.layers.Dense(
+        units=32, activation='swish', kernel_initializer=initializers.HeNormal()
+    ))
+    model.add(tf.keras.layers.BatchNormalization())
 
-    model.compile(
-            optimizer = tf.keras.optimizers.AdamW(learning_rate=1e-4, weight_decay=1e-4),
-        loss='mse',
-        metrics=['mse']
-    )
+    model.add(tf.keras.layers.Dense(1, activation='sigmoid', dtype='float32'))
+
+    optimizer = tf.keras.optimizers.AdamW(learning_rate=1e-3, clipnorm=1.0)
+
+    model.compile(optimizer=optimizer, loss='huber', metrics=['mae', 'mse'])
 
     return model
+
+
 
 
 
@@ -88,9 +92,9 @@ val_data = data.iloc[train_split_index:val_split_index]
 test_data = data.iloc[val_split_index:]
 
 target_variable = "P"
-X_train, y_train = train_data.drop([target_variable, 'SNR'], axis=1).values, train_data[target_variable].values
-X_val, y_val = val_data.drop([target_variable, 'SNR'], axis=1).values, val_data[target_variable].values
-X_test, y_test = test_data.drop([target_variable, 'SNR'], axis=1).values, test_data[target_variable].values
+X_train, y_train = train_data.drop([target_variable, 'SNR'], axis=1).values, (train_data[target_variable].values)
+X_val, y_val = val_data.drop([target_variable, 'SNR'], axis=1).values, (val_data[target_variable].values)
+X_test, y_test = test_data.drop([target_variable, 'SNR'], axis=1).values, (test_data[target_variable].values)
 
 
 strategy = tf.distribute.MirroredStrategy()
