@@ -27,7 +27,7 @@ tf.keras.mixed_precision.set_global_policy('mixed_float16')
 
 
 data_path = find_file("Deuteron_V8_2_100_No_Noise_500K.csv")
-version = 'Deuteron_2_100_v20'
+version = 'Deuteron_2_100_v22'
 performance_dir = f"Model Performance/{version}"
 model_dir = f"Models/{version}"
 os.makedirs(performance_dir, exist_ok=True)
@@ -35,47 +35,139 @@ os.makedirs(model_dir, exist_ok=True)
 
 
 
+# def Polarization():
+#     model = tf.keras.Sequential()
+#     model.add(tf.keras.Input(shape=(500,)))
+
+#     model.add(tf.keras.layers.BatchNormalization())
+#     model.add(tf.keras.layers.Dense(
+#         units=500, activation='swish', kernel_initializer=initializers.HeNormal()
+#     ))
+#     model.add(tf.keras.layers.Dropout(0.8))
+#     model.add(tf.keras.layers.BatchNormalization())
+
+#     model.add(tf.keras.layers.Dense(
+#         units=256, activation='swish', kernel_initializer=initializers.HeNormal()
+#     ))
+#     model.add(tf.keras.layers.Dropout(0.8))
+#     model.add(tf.keras.layers.BatchNormalization())
+
+#     model.add(tf.keras.layers.Dense(
+#         units=32, activation='swish', kernel_initializer=initializers.HeNormal()
+#     ))
+#     model.add(tf.keras.layers.Dropout(0.5))
+#     model.add(tf.keras.layers.BatchNormalization())
+
+#     model.add(tf.keras.layers.Dense(1, activation='linear', dtype='float32'))
+
+#     optimizer = tf.keras.optimizers.AdamW(learning_rate=1e-3, clipnorm=1.0)
+
+#     model.compile(optimizer=optimizer, loss='mse', metrics=['mae', 'mse'])
+
+#     return model
+
+
 def Polarization():
+    # Instantiate the Normalization layer
+    normalization_layer = tf.keras.layers.Normalization(axis=-1)
+
+    # Adapt the normalization layer on the training data before building the model
+    normalization_layer.adapt(X_train)  # Replace X_train with your training dataset
+
     model = tf.keras.Sequential()
-    model.add(tf.keras.Input(shape=(500,)))
 
-    # model.add(tf.keras.layers.BatchNormalization())
-    # model.add(tf.keras.layers.Dense(
-    #     units=500, activation='swish', kernel_initializer=initializers.HeNormal()
-    # ))
-    # model.add(tf.keras.layers.Dropout(0.8))
-    # model.add(tf.keras.layers.BatchNormalization())
+    # Add the Normalization layer
+    model.add(normalization_layer)
+    
+    model.add(tf.keras.layers.Dense(
+        units=512, 
+        activation='swish', 
+        kernel_initializer=initializers.HeNormal(),
+        kernel_regularizer=regularizers.l2(1e-4)
+    ))
+    model.add(tf.keras.layers.BatchNormalization())
+    model.add(tf.keras.layers.Dropout(0.4))
+    
+    model.add(tf.keras.layers.Dense(
+        units=256, 
+        activation='swish', 
+        kernel_initializer=initializers.HeNormal(),
+        kernel_regularizer=regularizers.l2(1e-4)
+    ))
+    model.add(tf.keras.layers.BatchNormalization())
+    model.add(tf.keras.layers.Dropout(0.4))
+    
+    model.add(tf.keras.layers.Dense(
+        units=128, 
+        activation='swish', 
+        kernel_initializer=initializers.HeNormal(),
+        kernel_regularizer=regularizers.l2(1e-4)
+    ))
+    model.add(tf.keras.layers.BatchNormalization())
+    model.add(tf.keras.layers.Dropout(0.3))
+    
+    model.add(tf.keras.layers.Dense(
+        units=64, 
+        activation='swish', 
+        kernel_initializer=initializers.HeNormal(),
+        kernel_regularizer=regularizers.l2(1e-4)
+    ))
+    model.add(tf.keras.layers.BatchNormalization())
+    model.add(tf.keras.layers.Dropout(0.3))
+    
+    model.add(tf.keras.layers.Dense(
+        1, 
+        activation='sigmoid',  
+        dtype='float32'
+    ))
+    
+    optimizer = tf.keras.optimizers.AdamW(learning_rate=1e-4, clipnorm=1.0)
 
-    # model.add(tf.keras.layers.Dense(
-    #     units=256, activation='swish', kernel_initializer=initializers.HeNormal()
-    # ))
-    # model.add(tf.keras.layers.Dropout(0.8))
-    # model.add(tf.keras.layers.BatchNormalization())
-
-    # model.add(tf.keras.layers.Dense(
-    #     units=32, activation='swish', kernel_initializer=initializers.HeNormal()
-    # ))
-    # model.add(tf.keras.layers.Dropout(0.5))
-    # model.add(tf.keras.layers.BatchNormalization())
-
-    model.add(tf.keras.layers.Dense(1, activation='linear', dtype='float32'))
-
-    optimizer = tf.keras.optimizers.AdamW(learning_rate=1e-3, clipnorm=1.0)
-
-    model.compile(optimizer=optimizer, loss='mse', metrics=['mae', 'mse'])
-
+    model.compile(optimizer=optimizer, loss='mae', metrics=['mae', 'mse'])
+    
     return model
 
 
 
+class CustomMetricsLogger(tf.keras.callbacks.Callback):
+    def __init__(self, log_path):
+        super().__init__()
+        self.log_path = log_path
+        self.epoch_data = []
+
+    def on_epoch_end(self, epoch, logs=None):
+        logs = logs or {}
+        lr = float(tf.keras.backend.get_value(self.model.optimizer.learning_rate))
+        training_loss = logs.get('loss', None)
+        validation_loss = logs.get('val_loss', None)
+        loss_diff = None
+        if training_loss is not None and validation_loss is not None:
+            loss_diff = training_loss - validation_loss
+        self.epoch_data.append({
+            'Epoch': epoch + 1,
+            'Learning Rate': lr,
+            'Training Loss': training_loss,
+            'Validation Loss': validation_loss,
+            'Loss Difference': loss_diff
+        })
+
+    def on_train_end(self, logs=None):
+        df = pd.DataFrame(self.epoch_data)
+        df.to_csv(self.log_path, index=False)
+        print(f"Custom metrics log saved to {self.log_path}")
+
+custom_metrics_log_path = os.path.join(performance_dir, f'custom_metrics_log_{version}.csv')
+custom_metrics_logger = CustomMetricsLogger(log_path=custom_metrics_log_path)
 
 
 callbacks_list = [
     CSVLogger(os.path.join(performance_dir, f'training_log_{version}.csv'), append=True, separator=';'),
     EarlyStopping(monitor='val_loss', mode='min', patience=8, verbose=0, restore_best_weights=True),
     ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, verbose=0, min_lr=1e-10),
-    ModelCheckpoint(filepath=os.path.join(model_dir, f'best_model_{version}.keras'), save_best_only=True, monitor='val_loss', mode='min')
+    ModelCheckpoint(filepath=os.path.join(model_dir, f'best_model_{version}.keras'), save_best_only=True, monitor='val_loss', mode='min'),
+    custom_metrics_logger
 ]
+
 
 
 data = pd.read_csv(data_path)
@@ -95,8 +187,6 @@ X_train, y_train = train_data.drop([target_variable, 'SNR'], axis=1).values, (tr
 X_val, y_val = val_data.drop([target_variable, 'SNR'], axis=1).values, (val_data[target_variable].values)
 X_test, y_test = test_data.drop([target_variable, 'SNR'], axis=1).values, test_data[target_variable].values
 
-print(X_train.shape)
-
 
 strategy = tf.distribute.MirroredStrategy()
 
@@ -108,7 +198,7 @@ history = model.fit(
     X_train,
     y_train, 
     validation_data=(X_val, y_val), 
-    epochs=5,
+    epochs=20,
     batch_size=32,
     callbacks=callbacks_list
 )
@@ -171,8 +261,24 @@ plt.tight_layout()
 
 polarization_loss_plot_path = os.path.join(performance_dir, f'{version}_Polarization_vs_Loss.png')
 plt.savefig(polarization_loss_plot_path, dpi=600)
-plt.show()
+
 print(f"Polarization vs. Loss plot saved to {polarization_loss_plot_path}")
+
+loss_diff = np.array(history.history['loss']) - np.array(history.history['val_loss'])
+plt.figure(figsize=(10, 6))
+plt.plot(range(1, len(loss_diff) + 1), loss_diff, marker='o', label="Loss Difference (Training - Validation)")
+plt.axhline(0, color='red', linestyle='--', linewidth=1, label="Zero Difference")
+plt.xlabel("Epoch")
+plt.ylabel("Loss Difference")
+plt.title("Difference Between Training and Validation Loss")
+plt.legend()
+plt.grid()
+
+loss_diff_plot_path = os.path.join(performance_dir, f'{version}_Loss_Diff_Plot.png')
+plt.savefig(loss_diff_plot_path, dpi=600)
+plt.show()
+
+print(f"Loss difference plot saved to {loss_diff_plot_path}")
 
 
 event_results_file = os.path.join(performance_dir, f'test_event_results_{version}.csv')
