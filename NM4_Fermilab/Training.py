@@ -2,7 +2,7 @@ import os
 import numpy as np
 import pandas as pd
 import tensorflow as tf
-from tensorflow.keras import regularizers, initializers
+from tensorflow.keras import regularizers, initializers,losses
 from tensorflow.keras.callbacks import CSVLogger, EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
 import matplotlib.pyplot as plt
 from Misc_Functions import *
@@ -27,7 +27,7 @@ tf.keras.mixed_precision.set_global_policy('mixed_float16')
 
 
 data_path = find_file("Deuteron_V8_2_100_No_Noise_500K.csv")
-version = 'Deuteron_2_100_v19'
+version = 'Deuteron_2_100_v20'
 performance_dir = f"Model Performance/{version}"
 model_dir = f"Models/{version}"
 os.makedirs(performance_dir, exist_ok=True)
@@ -39,29 +39,30 @@ def Polarization():
     model = tf.keras.Sequential()
     model.add(tf.keras.Input(shape=(500,)))
 
-    model.add(tf.keras.layers.BatchNormalization())
-    model.add(tf.keras.layers.Dense(
-        units=500, activation='swish', kernel_initializer=initializers.HeNormal()
-    ))
-    model.add(tf.keras.layers.Dropout(0.3))
-    model.add(tf.keras.layers.BatchNormalization())
+    # model.add(tf.keras.layers.BatchNormalization())
+    # model.add(tf.keras.layers.Dense(
+    #     units=500, activation='swish', kernel_initializer=initializers.HeNormal()
+    # ))
+    # model.add(tf.keras.layers.Dropout(0.8))
+    # model.add(tf.keras.layers.BatchNormalization())
 
-    model.add(tf.keras.layers.Dense(
-        units=64, activation='swish', kernel_initializer=initializers.HeNormal()
-    ))
-    model.add(tf.keras.layers.Dropout(0.2))
-    model.add(tf.keras.layers.BatchNormalization())
+    # model.add(tf.keras.layers.Dense(
+    #     units=256, activation='swish', kernel_initializer=initializers.HeNormal()
+    # ))
+    # model.add(tf.keras.layers.Dropout(0.8))
+    # model.add(tf.keras.layers.BatchNormalization())
 
-    model.add(tf.keras.layers.Dense(
-        units=32, activation='swish', kernel_initializer=initializers.HeNormal()
-    ))
-    model.add(tf.keras.layers.BatchNormalization())
+    # model.add(tf.keras.layers.Dense(
+    #     units=32, activation='swish', kernel_initializer=initializers.HeNormal()
+    # ))
+    # model.add(tf.keras.layers.Dropout(0.5))
+    # model.add(tf.keras.layers.BatchNormalization())
 
     model.add(tf.keras.layers.Dense(1, activation='linear', dtype='float32'))
 
     optimizer = tf.keras.optimizers.AdamW(learning_rate=1e-3, clipnorm=1.0)
 
-    model.compile(optimizer=optimizer, loss='huber', metrics=['mae', 'mse'])
+    model.compile(optimizer=optimizer, loss='mse', metrics=['mae', 'mse'])
 
     return model
 
@@ -94,6 +95,8 @@ X_train, y_train = train_data.drop([target_variable, 'SNR'], axis=1).values, (tr
 X_val, y_val = val_data.drop([target_variable, 'SNR'], axis=1).values, (val_data[target_variable].values)
 X_test, y_test = test_data.drop([target_variable, 'SNR'], axis=1).values, test_data[target_variable].values
 
+print(X_train.shape)
+
 
 strategy = tf.distribute.MirroredStrategy()
 
@@ -105,8 +108,8 @@ history = model.fit(
     X_train,
     y_train, 
     validation_data=(X_val, y_val), 
-    epochs=200,
-    batch_size=1,
+    epochs=5,
+    batch_size=32,
     callbacks=callbacks_list
 )
 
@@ -146,6 +149,31 @@ test_results_df = pd.DataFrame({
     'Predicted': y_test_pred.flatten(),
     'Residuals': residuals
 })
+
+print("Calculating per-sample MSE losses...")
+individual_losses = np.square(y_test - y_test_pred.flatten())  # MSE per sample
+
+loss_results_df = pd.DataFrame({
+    'Polarization': y_test,
+    'Loss': individual_losses
+})
+loss_results_file = os.path.join(performance_dir, f'per_sample_loss_{version}.csv')
+loss_results_df.to_csv(loss_results_file, index=False)
+print(f"Per-sample loss results saved to {loss_results_file}")
+
+plt.figure(figsize=(10, 6))
+plt.scatter(y_test, individual_losses, alpha=0.6, color='blue', edgecolors='w', s=50)
+plt.xlabel('Polarization (True Values)', fontsize=14)
+plt.ylabel('Loss (MSE)', fontsize=14)
+plt.title('Polarization vs. Loss (MSE)', fontsize=16)
+plt.grid(True, linestyle='--', alpha=0.7)
+plt.tight_layout()
+
+polarization_loss_plot_path = os.path.join(performance_dir, f'{version}_Polarization_vs_Loss.png')
+plt.savefig(polarization_loss_plot_path, dpi=600)
+plt.show()
+print(f"Polarization vs. Loss plot saved to {polarization_loss_plot_path}")
+
 
 event_results_file = os.path.join(performance_dir, f'test_event_results_{version}.csv')
 test_results_df.to_csv(event_results_file, index=False)
@@ -209,4 +237,5 @@ summary_results_df.to_csv(summary_results_file, index=False)
 
 print(f"Test Loss: {test_loss}, Test MSE: {test_mse}")
 print(f"Test summary results saved to {summary_results_file}")
-# print(f"Model summary saved to {model_summary_path}")
+print(f"Model summary saved to {model_summary_path}")
+
