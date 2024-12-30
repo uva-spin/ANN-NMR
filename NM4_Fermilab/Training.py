@@ -68,15 +68,12 @@ os.makedirs(model_dir, exist_ok=True)
 
 
 def Polarization():
-    # Instantiate the Normalization layer
     normalization_layer = tf.keras.layers.Normalization(axis=-1)
 
-    # Adapt the normalization layer on the training data before building the model
-    normalization_layer.adapt(X_train)  # Replace X_train with your training dataset
+    normalization_layer.adapt(X_train)  
 
     model = tf.keras.Sequential()
 
-    # Add the Normalization layer
     model.add(normalization_layer)
     
     model.add(tf.keras.layers.Dense(
