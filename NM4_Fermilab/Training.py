@@ -26,7 +26,7 @@ if physical_devices:
 tf.keras.mixed_precision.set_global_policy('mixed_float16')
 
 
-data_path = find_file("Deuteron_V8_2_100_No_Noise_500K.csv")
+data_path = find_file("Deuteron_2_100_No_Noise_500K.csv")
 version = 'Deuteron_2_100_v22'
 performance_dir = f"Model Performance/{version}"
 model_dir = f"Models/{version}"

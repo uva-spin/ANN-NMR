@@ -137,7 +137,7 @@ X_test, y_test = test_data.drop([target_variable, 'SNR'], axis=1).values, test_d
 
 epochs_list = [5,10, 15, 20, 25, 30]  
 batch_size = 1
-
+lr = 1e-4
 for epochs in epochs_list:
     current_version = f"{version}_epochs_{epochs}_batch_{batch_size}"
     performance_dir = f"Model Performance/{current_version}"
@@ -172,7 +172,6 @@ for epochs in epochs_list:
     )
 
     print("Evaluating on test data...")
-    test_loss, test_mse = model.evaluate(X_test, y_test, batch_size=batch_size)
 
     model_summary_path = os.path.join(performance_dir, 'model_summary.txt')
     with open(model_summary_path, 'w') as f:
@@ -233,6 +232,10 @@ for epochs in epochs_list:
     event_results_file = os.path.join(performance_dir, f'test_event_results_{version}.csv')
     test_results_df.to_csv(event_results_file, index=False)
     print(f"Test results saved to {event_results_file}")
+
+
+    test_loss, test_mse, *other_things = model.evaluate(X_test, y_test, batch_size=batch_size)
+
 
     test_summary_results = {
         'Date': [str(datetime.now())],
