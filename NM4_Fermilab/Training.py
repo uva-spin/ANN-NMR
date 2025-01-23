@@ -3,13 +3,13 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 from tensorflow.keras import regularizers, initializers,losses
-from tensorflow.keras.callbacks import CSVLogger, EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
+from tensorflow.keras.callbacks import CSVLogger, EarlyStopping, ReduceLROnPlateau, ModelCheckpoint,LearningRateScheduler
 from sklearn.preprocessing import MinMaxScaler
 import matplotlib.pyplot as plt
 from Misc_Functions import *
 from datetime import datetime
 
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 print("Available devices:")
 for device in tf.config.list_physical_devices():
@@ -28,7 +28,7 @@ tf.keras.mixed_precision.set_global_policy('mixed_float16')
 
 
 data_path = find_file("Deuteron_2_100_No_Noise_500K.csv") ### Type in file name here
-version = 'Deuteron_2_100_V2' ### Rename for each time your run it
+version = 'Deuteron_2_100_V5' ### Rename for each time your run it
 performance_dir = f"Model Performance/{version}" ### Automatically create performanc directory for saving performance metrics
 model_dir = f"Models/{version}" ### Automatically makes model directory to saving the weights
 os.makedirs(performance_dir, exist_ok=True)
@@ -36,31 +36,32 @@ os.makedirs(model_dir, exist_ok=True)
 
 def Polarization(input_dim: int):
     model = tf.keras.Sequential()
-    layer_sizes = [512, 256, 128, 64]
-    dropout_rates = [0.4, 0.4, 0.3, 0.3]
+    layer_sizes = [1024, 512, 256,128,64,32,10]  
+    dropout_rates = [0.25, 0.25, 0.2, 0.2, 0.2, 0.2]  # Slightly reduced dropout
 
     for i, (units, dropout) in enumerate(zip(layer_sizes, dropout_rates)):
+        model.add(tf.keras.layers.BatchNormalization())
         model.add(tf.keras.layers.Dense(
             units=units, 
-            activation='swish',
+            activation='relu',  # Using ReLU for better feature extraction
             kernel_initializer=initializers.HeNormal(),
             kernel_regularizer=regularizers.l2(1e-4),
             input_shape=(input_dim,) if i == 0 else ()
         ))
-        model.add(tf.keras.layers.BatchNormalization())
+        # model.add(tf.keras.layers.BatchNormalization())
         model.add(tf.keras.layers.Dropout(dropout))
 
-    model.add(tf.keras.layers.Dense(1, activation='linear', dtype='float32'))
+    model.add(tf.keras.layers.Dense(1, activation='linear', dtype='float32'))  # Sigmoid for [0,1] output
 
-    optimizer = tf.keras.optimizers.AdamW(learning_rate=1e-4, weight_decay=1e-4, clipnorm=1.0)
-    
-    model.compile(optimizer=optimizer, loss='mae', metrics=['mae', 'mse'])
+    optimizer = tf.keras.optimizers.AdamW(learning_rate=1e-2, weight_decay=5e-3, clipnorm=1.000)
+
+    model.compile(optimizer=optimizer, loss='mse', metrics=['mae', 'mse'])
 
     return model
 
 
 
-class CustomMetricsLogger(tf.keras.callbacks.Callback):
+class MetricsLogger(tf.keras.callbacks.Callback):
     def __init__(self, log_path):
         super().__init__()
         self.log_path = log_path
@@ -88,17 +89,41 @@ class CustomMetricsLogger(tf.keras.callbacks.Callback):
         print(f"Custom metrics log saved to {self.log_path}")
 
 custom_metrics_log_path = os.path.join(performance_dir, f'custom_metrics_log_{version}.csv')
-custom_metrics_logger = CustomMetricsLogger(log_path=custom_metrics_log_path)
+# custom_metrics_logger = MetricsLogger(log_path=custom_metrics_log_path)
 
+# class AdjustOptimizerCallback(tf.keras.callbacks.Callback):
+#     def on_epoch_begin(self, epoch, logs=None):
+#         current_lr = float(tf.keras.backend.get_value(self.model.optimizer.learning_rate))
+        
+#         # Get current optimizer configuration
+#         # optimizer_config = self.model.optimizer.weight_decay
+
+#         # Extract weight decay, ensuring it is not None
+#         current_weight_decay = self.model.optimizer.weight_decay
+#         new_weight_decay = max(1e-4, current_weight_decay * 0.9)  # Decrease weight decay
+#         new_clipvalue = max(0.001, self.model.optimizer.clipvalue * 0.95)  # Adjust gradient clipping
+
+#         # Set new values
+#         self.model.optimizer.weight_decay = new_weight_decay
+#         self.model.optimizer.clipvalue = new_clipvalue
+
+#         print(f"Epoch {epoch+1}: Learning Rate = {current_lr:.6f}, Weight Decay = {new_weight_decay:.6f}, Clip Value = {new_clipvalue:.6f}")
+
+
+
+### Learning Rate Scheduler ###
+def lr_scheduler(epoch, lr):
+    return lr * 0.9 if (epoch + 1) % 10 == 0 else lr  # Reduce LR every 10 epochs
 
 callbacks_list = [
     CSVLogger(os.path.join(performance_dir, f'training_log_{version}.csv'), append=True, separator=';'),
     EarlyStopping(monitor='val_loss', mode='min', patience=8, verbose=0, restore_best_weights=True),
     ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, verbose=0, min_lr=1e-10),
     ModelCheckpoint(filepath=os.path.join(model_dir, f'best_model_{version}.keras'), save_best_only=True, monitor='val_loss', mode='min'),
-    custom_metrics_logger
+    MetricsLogger(log_path=custom_metrics_log_path),
+    # LearningRateScheduler(lr_scheduler, verbose=1),  # Adjusts LR every 10 epochs
+    # AdjustOptimizerCallback(),  # Adjusts weight decay & clipvalue dynamically]
 ]
-
 
 
 print("Getting data...")
@@ -144,8 +169,8 @@ history = model.fit(
     X_train,
     y_train, 
     validation_data=(X_val, y_val), 
-    epochs=20,
-    batch_size=256,
+    epochs=200,
+    batch_size=32,
     callbacks=callbacks_list,
     verbose = 1
 )
