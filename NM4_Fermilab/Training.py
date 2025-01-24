@@ -2,13 +2,12 @@ import os
 import numpy as np
 import pandas as pd
 import tensorflow as tf
-from tensorflow.keras import regularizers, initializers,losses
-from tensorflow.keras.callbacks import CSVLogger, EarlyStopping, ReduceLROnPlateau, ModelCheckpoint,LearningRateScheduler
+from tensorflow.keras import regularizers, initializers
+from tensorflow.keras.callbacks import CSVLogger, EarlyStopping, ReduceLROnPlateau, ModelCheckpoint, LearningRateScheduler
 from sklearn.preprocessing import MinMaxScaler
 import matplotlib.pyplot as plt
-from Misc_Functions import *
 from datetime import datetime
-
+from Misc_Functions import *
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 print("Available devices:")
@@ -23,159 +22,120 @@ if physical_devices:
     except RuntimeError as e:
         print(f"Error setting GPU: {e}")
 
-
 tf.keras.mixed_precision.set_global_policy('mixed_float16')
 
+# Load datasets
+data_path_2_100 = find_file("Deuteron_2_100_No_Noise_500K.csv")  # Replace with actual file name
+data_path_0_2 = find_file("Deuteron_0_2_No_Noise_500K.csv")  # Replace with actual file name
+data_2_100 = pd.read_csv(data_path_2_100)
+data_0_2 = pd.read_csv(data_path_0_2)
 
-data_path = find_file("Deuteron_2_100_No_Noise_500K.csv") ### Type in file name here
-version = 'Deuteron_2_100_V5' ### Rename for each time your run it
-performance_dir = f"Model Performance/{version}" ### Automatically create performanc directory for saving performance metrics
-model_dir = f"Models/{version}" ### Automatically makes model directory to saving the weights
+# Define version and directories
+version = 'Deuteron_All_V2'
+performance_dir = f"Model Performance/{version}"
+model_dir = f"Models/{version}"
 os.makedirs(performance_dir, exist_ok=True)
 os.makedirs(model_dir, exist_ok=True)
 
+# Define the model
 def Polarization(input_dim: int):
     model = tf.keras.Sequential()
-    layer_sizes = [1024, 512, 256,128,64,32,10]  
-    dropout_rates = [0.25, 0.25, 0.2, 0.2, 0.2, 0.2]  # Slightly reduced dropout
-
-    for i, (units, dropout) in enumerate(zip(layer_sizes, dropout_rates)):
+    layer_configs = [
+        {"units": 1024, "dropout": 0.25},
+        {"units": 512, "dropout": 0.25},
+        {"units": 256, "dropout": 0.2},
+        {"units": 128, "dropout": 0.2},
+        {"units": 64, "dropout": 0.2},
+        {"units": 32, "dropout": 0.2},
+    ]
+    model.add(tf.keras.layers.BatchNormalization())
+    model.add(tf.keras.layers.Dense(
+        units=layer_configs[0]["units"],
+        activation='relu',
+        kernel_initializer=initializers.HeNormal(),
+        kernel_regularizer=regularizers.l2(1e-4),
+        input_shape=(input_dim,)
+    ))
+    model.add(tf.keras.layers.Dropout(layer_configs[0]["dropout"]))
+    for config in layer_configs[1:]:
         model.add(tf.keras.layers.BatchNormalization())
         model.add(tf.keras.layers.Dense(
-            units=units, 
-            activation='relu',  # Using ReLU for better feature extraction
+            units=config["units"],
+            activation='relu',
             kernel_initializer=initializers.HeNormal(),
-            kernel_regularizer=regularizers.l2(1e-4),
-            input_shape=(input_dim,) if i == 0 else ()
+            kernel_regularizer=regularizers.l2(1e-4)
         ))
-        # model.add(tf.keras.layers.BatchNormalization())
-        model.add(tf.keras.layers.Dropout(dropout))
-
-    model.add(tf.keras.layers.Dense(1, activation='linear', dtype='float32'))  # Sigmoid for [0,1] output
-
-    optimizer = tf.keras.optimizers.AdamW(learning_rate=1e-2, weight_decay=5e-3, clipnorm=1.000)
-
-    model.compile(optimizer=optimizer, loss='mse', metrics=['mae', 'mse'])
-
+        model.add(tf.keras.layers.Dropout(config["dropout"]))
+    model.add(tf.keras.layers.Dense(1, activation='sigmoid', dtype='float32'))
+    optimizer = tf.keras.optimizers.AdamW(
+        learning_rate=1e-4,
+        weight_decay=1e-2,
+        clipnorm=1.0
+    )
+    model.compile(optimizer=optimizer, loss='mse', metrics=['mae'])
     return model
 
-
-
-class MetricsLogger(tf.keras.callbacks.Callback):
-    def __init__(self, log_path):
-        super().__init__()
-        self.log_path = log_path
-        self.epoch_data = []
-
-    def on_epoch_end(self, epoch, logs=None):
-        logs = logs or {}
-        lr = float(tf.keras.backend.get_value(self.model.optimizer.learning_rate))
-        training_loss = logs.get('loss', None)
-        validation_loss = logs.get('val_loss', None)
-        loss_diff = None
-        if training_loss is not None and validation_loss is not None:
-            loss_diff = training_loss - validation_loss
-        self.epoch_data.append({
-            'Epoch': epoch + 1,
-            'Learning Rate': lr,
-            'Training Loss': training_loss,
-            'Validation Loss': validation_loss,
-            'Loss Difference': loss_diff
-        })
-
-    def on_train_end(self, logs=None):
-        df = pd.DataFrame(self.epoch_data)
-        df.to_csv(self.log_path, index=False)
-        print(f"Custom metrics log saved to {self.log_path}")
-
+# Callbacks
 custom_metrics_log_path = os.path.join(performance_dir, f'custom_metrics_log_{version}.csv')
-# custom_metrics_logger = MetricsLogger(log_path=custom_metrics_log_path)
-
-# class AdjustOptimizerCallback(tf.keras.callbacks.Callback):
-#     def on_epoch_begin(self, epoch, logs=None):
-#         current_lr = float(tf.keras.backend.get_value(self.model.optimizer.learning_rate))
-        
-#         # Get current optimizer configuration
-#         # optimizer_config = self.model.optimizer.weight_decay
-
-#         # Extract weight decay, ensuring it is not None
-#         current_weight_decay = self.model.optimizer.weight_decay
-#         new_weight_decay = max(1e-4, current_weight_decay * 0.9)  # Decrease weight decay
-#         new_clipvalue = max(0.001, self.model.optimizer.clipvalue * 0.95)  # Adjust gradient clipping
-
-#         # Set new values
-#         self.model.optimizer.weight_decay = new_weight_decay
-#         self.model.optimizer.clipvalue = new_clipvalue
-
-#         print(f"Epoch {epoch+1}: Learning Rate = {current_lr:.6f}, Weight Decay = {new_weight_decay:.6f}, Clip Value = {new_clipvalue:.6f}")
-
-
-
-### Learning Rate Scheduler ###
-def lr_scheduler(epoch, lr):
-    return lr * 0.9 if (epoch + 1) % 10 == 0 else lr  # Reduce LR every 10 epochs
-
 callbacks_list = [
     CSVLogger(os.path.join(performance_dir, f'training_log_{version}.csv'), append=True, separator=';'),
     EarlyStopping(monitor='val_loss', mode='min', patience=8, verbose=0, restore_best_weights=True),
     ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, verbose=0, min_lr=1e-10),
     ModelCheckpoint(filepath=os.path.join(model_dir, f'best_model_{version}.keras'), save_best_only=True, monitor='val_loss', mode='min'),
-    MetricsLogger(log_path=custom_metrics_log_path),
-    # LearningRateScheduler(lr_scheduler, verbose=1),  # Adjusts LR every 10 epochs
-    # AdjustOptimizerCallback(),  # Adjusts weight decay & clipvalue dynamically]
+    MetricsLogger(log_path=custom_metrics_log_path)
 ]
 
+# Preprocess data
+def preprocess_data(data, val_fraction=0.2, test_fraction=0.1):
+    train_split_index = int(len(data) * (1 - val_fraction - test_fraction))
+    val_split_index = int(len(data) * (1 - test_fraction))
+    train_data = data.iloc[:train_split_index]
+    val_data = data.iloc[train_split_index:val_split_index]
+    test_data = data.iloc[val_split_index:]
+    target_variable = "P"
+    X_train = train_data.drop([target_variable, 'SNR'], axis=1).values
+    y_train = train_data[target_variable].values
+    X_val = val_data.drop([target_variable, 'SNR'], axis=1).values
+    y_val = val_data[target_variable].values
+    X_test = test_data.drop([target_variable, 'SNR'], axis=1).values
+    y_test = test_data[target_variable].values
+    scaler = MinMaxScaler()
+    X_train = scaler.fit_transform(X_train)
+    X_val = scaler.transform(X_val)
+    X_test = scaler.transform(X_test)
+    return X_train, y_train, X_val, y_val, X_test, y_test, scaler
 
-print("Getting data...")
-data = pd.read_csv(data_path)
-print(f"Data found at: {data}")
+# Preprocess 2_100 data
+X_train_2_100, y_train_2_100, X_val_2_100, y_val_2_100, X_test_2_100, y_test_2_100, scaler_2_100 = preprocess_data(data_2_100)
 
-val_fraction = 0.2
-test_fraction = 0.1
+# Preprocess 0_2 data
+X_train_0_2, y_train_0_2, X_val_0_2, y_val_0_2, X_test_0_2, y_test_0_2, scaler_0_2 = preprocess_data(data_0_2)
 
-train_split_index = int(len(data) * (1 - val_fraction - test_fraction))
-val_split_index = int(len(data) * (1 - test_fraction))
-
-train_data = data.iloc[:train_split_index]
-val_data = data.iloc[train_split_index:val_split_index]
-test_data = data.iloc[val_split_index:]
-
-target_variable = "P"
-X_train, y_train = train_data.drop([target_variable, 'SNR'], axis=1).values, train_data[target_variable].values
-X_val, y_val = val_data.drop([target_variable, 'SNR'], axis=1).values, val_data[target_variable].values
-X_test, y_test = test_data.drop([target_variable, 'SNR'], axis=1).values, test_data[target_variable].values
-
-# Normalize X values to [0,1]
-scaler = MinMaxScaler()
-X_train = scaler.fit_transform(X_train)
-X_val = scaler.transform(X_val)
-X_test = scaler.transform(X_test)
-
-# Add Gaussian noise (mean = 0, small stddev)
-noise_std = 0.1  # Adjust as needed
-X_train += np.random.normal(0, noise_std, X_train.shape)
-X_val += np.random.normal(0, noise_std, X_val.shape)
-X_test += np.random.normal(0, noise_std, X_test.shape)
-
-# Train using a single GPU
-print("Compiling model...")
+# Train on 2_100 data
+print("Training on 2_100 data...")
 with tf.device("/GPU:0"):
-    model = Polarization(X_train.shape[1]) ### This is num. of columns in training data
-print("Model compiled!")
-
-
-print("Starting training on full dataset...")
-history = model.fit(
-    X_train,
-    y_train, 
-    validation_data=(X_val, y_val), 
+    model = Polarization(X_train_2_100.shape[1])
+history_2_100 = model.fit(
+    X_train_2_100, y_train_2_100,
+    validation_data=(X_val_2_100, y_val_2_100),
     epochs=200,
-    batch_size=32,
+    batch_size=256,
     callbacks=callbacks_list,
-    verbose = 1
+    verbose=1
 )
+print("Training on 2_100 data finished!")
 
-print("Training finished!")
+# Retrain on 0_2 data
+print("Retraining on 0_2 data...")
+history_0_2 = model.fit(
+    X_train_0_2, y_train_0_2,
+    validation_data=(X_val_0_2, y_val_0_2),
+    epochs=100,  # Fewer epochs for fine-tuning
+    batch_size=256,
+    callbacks=callbacks_list,
+    verbose=1
+)
+print("Retraining on 0_2 data finished!")
 
 
 plt.figure(figsize=(10, 6))
@@ -198,8 +158,6 @@ with open(model_summary_path, 'w') as f:
     model.summary(print_fn=lambda x: f.write(x + '\n'))
 
 model.save(os.path.join(model_dir, f'final_model_{version}.keras'))
-
-# model = tf.keras.models.load_model('Models/Deuteron_2_100_v18/final_model_Deuteron_2_100_v18.keras')
 
 print("Evaluating on test data...")
 
