@@ -1,9 +1,15 @@
 import os
+import json
 import numpy as np
 import pandas as pd
 import tensorflow as tf
-from tensorflow.keras import regularizers, initializers,losses
+from tensorflow.keras import layers, regularizers, initializers, optimizers
 from tensorflow.keras.callbacks import CSVLogger, EarlyStopping, ReduceLROnPlateau, ModelCheckpoint,LearningRateScheduler
+import keras_tuner as kt
+from keras_tuner.tuners import RandomSearch
+from sklearn.model_selection import train_test_split
+from tensorflow.keras.layers import LeakyReLU
+
 from sklearn.preprocessing import MinMaxScaler
 import matplotlib.pyplot as plt
 from Misc_Functions import *
@@ -27,66 +33,61 @@ if physical_devices:
 tf.keras.mixed_precision.set_global_policy('mixed_float16')
 
 
-data_path_2_100 = find_file("Deuteron_2_100_No_Noise_500K.csv") ### Type in file name here
-data_path_0_2 = find_file("Deuteron_0_2_No_Noise_500K.csv") ### Type in file name here
-data_path_All = find_file("Deuteron_No_Noise_1M.csv") ### Type in file name here
-version = 'Deuteron_All_V5' ### Rename for each time your run it
-performance_dir = f"Model Performance/{version}" ### Automatically create performanc directory for saving performance metrics
-model_dir = f"Models/{version}" ### Automatically makes model directory to saving the weights
+# File paths and versioning
+data_path_2_100 = find_file("Deuteron_2_100_No_Noise_500K.csv")  
+# data_path_0_2 = find_file("Deuteron_0_2_No_Noise_500K.csv")  
+# data_path_All = find_file("Deuteron_No_Noise_1M.csv")  
+
+version = 'Deuteron_All_V7'  # Rename for each new run
+performance_dir = f"Model Performance/{version}"  
+model_dir = f"Models/{version}"  
+
+# Create necessary directories
 os.makedirs(performance_dir, exist_ok=True)
 os.makedirs(model_dir, exist_ok=True)
 
-def Polarization(input_dim: int):
-    # Initialize the model
+def Polarization(hp):
     model = tf.keras.Sequential()
 
-    # Layer configurations
-    layer_configs = [
-        # {"units": 1024, "dropout": 0.25},
-        # {"units": 512, "dropout": 0.25},
-        # {"units": 256, "dropout": 0.2},
-        {"units": 128, "dropout": 0.2},
-        {"units": 64, "dropout": 0.2},
-        {"units": 32, "dropout": 0.2},
-    ]
+    # Input Layer
+    input_dim = 500
+    model.add(layers.InputLayer(input_shape=(input_dim,)))
 
-    # Input layer
-    model.add(tf.keras.layers.BatchNormalization())
-    model.add(tf.keras.layers.Dense(
-        units=layer_configs[0]["units"],
-        activation='relu',
-        kernel_initializer=initializers.HeNormal(),
-        kernel_regularizer=regularizers.l2(1e-4),
-        input_shape=(input_dim,)
-    ))
-    model.add(tf.keras.layers.Dropout(layer_configs[0]["dropout"]))
+    num_layers = hp.Int("num_layers", min_value=1, max_value=10)
+    
+    for i in range(num_layers):
+        units = hp.Choice(f"units_{i}", values=[32, 64, 128, 256, 512, 1024])
+        activation = hp.Choice(f"activation_{i}", values=["relu6", "swish", "hard_swish"])
+        dropout_rate = hp.Float(f"dropout_{i}", min_value=0.1, max_value=0.8, step=0.1)
 
-    # Hidden layers
-    for config in layer_configs[1:]:
-        model.add(tf.keras.layers.BatchNormalization())
-        model.add(tf.keras.layers.Dense(
-            units=config["units"],
-            activation='relu',
+        print(f"Layer {i + 1}: Activation = {activation}")  # Debug statement
+
+        model.add(layers.Dense(
+            units=units,
+            activation=activation,
             kernel_initializer=initializers.HeNormal(),
-            kernel_regularizer=regularizers.l2(1e-4)
+            kernel_regularizer=regularizers.l2(hp.Float("l2_reg", 1e-6, 1e-2, sampling="log"))
         ))
-        model.add(tf.keras.layers.Dropout(config["dropout"]))
+        model.add(layers.Dropout(rate=dropout_rate))
+        model.add(layers.BatchNormalization())
 
-    # Output layer with sigmoid activation for [0, 1] output
-    model.add(tf.keras.layers.Dense(1, activation='linear', dtype='float32'))
+    # Output Layer (Sigmoid for Regression)
+    model.add(layers.Dense(1, activation="sigmoid"))
 
-    # Optimizer
-    optimizer = tf.keras.optimizers.AdamW(
-        learning_rate=1e-4,  # Adjusted learning rate for better convergence
-        weight_decay = 1e-2,
-        clipnorm=1.0
-    )
+    # Tune the optimizer (Adam or Nadam)
+    optimizer_choice = hp.Choice("optimizer", values=["adam", "nadam"])
+    learning_rate = hp.Float("learning_rate", min_value=1e-3, max_value=1e-2, sampling="log")
 
-    # Compile the model
+    if optimizer_choice == "adam":
+        optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
+    else:
+        optimizer = tf.keras.optimizers.Nadam(learning_rate=learning_rate)
+
+    # Compile model
     model.compile(
         optimizer=optimizer,
-        loss='mse',  # Use MSE for regression tasks
-        metrics=['mae']  # Monitor MAE for regression
+        loss="mse",
+        metrics=["mae"]
     )
 
     return model
@@ -138,32 +139,27 @@ callbacks_list = [
 print("Getting data...")
 # Load datasets
 data_2_100 = pd.read_csv(data_path_2_100)
-data_0_2 = pd.read_csv(data_path_0_2)
-data_All = pd.read_csv(data_path_All)
+# data_0_2 = pd.read_csv(data_path_0_2)
+# data_All = pd.read_csv(data_path_All)
 
 # Define the target variable
-target_variable = "P"  # Replace with the actual column name for the target variable
+target_variable = "P"
 
-# Filter datasets to include only rows where the target variable is between 0.1 and 0.8
-data_2_100 = data_2_100[(data_2_100[target_variable] >= 0.1) & (data_2_100[target_variable] <= 0.8)]
-data_0_2 = data_0_2[(data_0_2[target_variable] >= 0.1) & (data_0_2[target_variable] <= 0.8)]
-data_All = data_All[(data_All[target_variable] >= 0.1) & (data_All[target_variable] <= 0.8)]
+# Filter datasets efficiently using .query()
+data_2_100 = data_2_100.query("0.1 <= P <= 0.8")
+# data_0_2 = data_0_2.query("0.1 <= P <= 0.8")
+# data_All = data_All.query("0.1 <= P <= 0.8")
+
 print(f"Data found at: {data_2_100}")
 
-val_fraction = 0.2
-test_fraction = 0.1
+# Split data into train (70%), validation (20%), and test (10%)
+train_data, temp_data = train_test_split(data_2_100, test_size=0.3, random_state=42, shuffle=True)
+val_data, test_data = train_test_split(temp_data, test_size=1/3, random_state=42, shuffle=True)
 
-train_split_index = int(len(data_2_100) * (1 - val_fraction - test_fraction))
-val_split_index = int(len(data_2_100) * (1 - test_fraction))
-
-train_data = data_2_100.iloc[:train_split_index]
-val_data = data_2_100.iloc[train_split_index:val_split_index]
-test_data = data_2_100.iloc[val_split_index:]
-
-target_variable = "P"
-X_train, y_train = train_data.drop([target_variable, 'SNR'], axis=1).values, train_data[target_variable].values
-X_val, y_val = val_data.drop([target_variable, 'SNR'], axis=1).values, val_data[target_variable].values
-X_test, y_test = test_data.drop([target_variable, 'SNR'], axis=1).values, test_data[target_variable].values
+# Separate features and target
+X_train, y_train = train_data.drop(columns=[target_variable, 'SNR']).values, train_data[target_variable].values
+X_val, y_val = val_data.drop(columns=[target_variable, 'SNR']).values, val_data[target_variable].values
+X_test, y_test = test_data.drop(columns=[target_variable, 'SNR']).values, test_data[target_variable].values
 
 # Normalize X values to [0,1]
 scaler = MinMaxScaler()
@@ -172,30 +168,82 @@ X_val = scaler.transform(X_val)
 X_test = scaler.transform(X_test)
 
 # Add Gaussian noise (mean = 0, small stddev)
-noise_std = 0.15  # Adjust as needed
+noise_std = 0.1  # Adjust as needed
 X_train += np.random.normal(0, noise_std, X_train.shape)
 X_val += np.random.normal(0, noise_std, X_val.shape)
 X_test += np.random.normal(0, noise_std, X_test.shape)
 
-# Train using a single GPU
-print("Compiling model...")
-with tf.device("/GPU:0"):
-    model = Polarization(X_train.shape[1]) ### This is num. of columns in training data
-print("Model compiled!")
+# # Train using a single GPU
+# print("Compiling model...")
+# with tf.device("/GPU:0"):
+#     model = Polarization ### This is num. of columns in training data
+# print("Model compiled!")
 
 
 print("Starting training on full dataset...")
-history = model.fit(
-    X_train,
-    y_train, 
-    validation_data=(X_val, y_val), 
+# Define input dimension
+input_dim = X_train.shape[1]  # Number of features
+
+tuner = kt.BayesianOptimization(
+    Polarization,
+    objective="val_loss",
+    max_trials=100,
+    directory="tuning_results",
+    project_name="polarization_model"
+)
+tuner.search(
+    X_train, y_train,
+    validation_split=0.2,
+    epochs=100,
+    callbacks=callbacks_list 
+)
+
+# Get the best hyperparameters and model
+best_hps = tuner.get_best_hyperparameters(num_trials=1)[0]
+best_model = tuner.hypermodel.build(best_hps)
+
+# Train the best model on the full dataset
+history = best_model.fit(
+    X_train, y_train,
+    validation_data=(X_val, y_val),
     epochs=200,
-    batch_size=128,
+    batch_size=128,  # Use best batch size or default
     callbacks=callbacks_list,
-    verbose = 1
+    verbose=1
 )
 
 print("Training finished!")
+
+print(best_hps.get("optimizer"))
+
+# --- SAVE MODEL DETAILS ---
+
+# Save hyperparameters
+hparams_path = os.path.join(performance_dir, "best_hyperparameters.json")
+with open(hparams_path, "w") as f:
+    json.dump(best_hps.values, f, indent=4)
+
+# Save model architecture
+architecture_path = os.path.join(performance_dir, "model_architecture.txt")
+with open(architecture_path, "w") as f:
+    best_model.summary(print_fn=lambda x: f.write(x + "\n"))
+
+# Save training history
+history_path = os.path.join(performance_dir, "training_history.json")
+with open(history_path, "w") as f:
+    json.dump(history.history, f, indent=4)
+
+# Save model weights
+weights_path = os.path.join(model_dir, "best_model_weights.weights.h5")
+best_model.save_weights(weights_path)
+
+# Save full model
+full_model_path = os.path.join(model_dir, "best_model.h5")
+best_model.save(full_model_path)
+
+print(f"✅ Model details saved in '{performance_dir}' and '{model_dir}' folders.")
+
+model = best_model
 
 
 plt.figure(figsize=(10, 6))
@@ -213,9 +261,9 @@ plt.savefig(loss_plot_path, dpi=600)
 print(f"Loss plot saved to {loss_plot_path}")
 
 
-model_summary_path = os.path.join(performance_dir, 'model_summary.txt')
-with open(model_summary_path, 'w') as f:
-    model.summary(print_fn=lambda x: f.write(x + '\n'))
+# model_summary_path = os.path.join(performance_dir, 'model_summary.txt')
+# with open(model_summary_path, 'w') as f:
+#     model.summary(print_fn=lambda x: f.write(x + '\n'))
 
 model.save(os.path.join(model_dir, f'final_model_{version}.keras'))
 
@@ -334,5 +382,5 @@ summary_results_df.to_csv(summary_results_file, index=False)
 
 print(f"Test Loss: {test_loss}, Test MSE: {test_mse}")
 print(f"Test summary results saved to {summary_results_file}")
-print(f"Model summary saved to {model_summary_path}")
+# print(f"Model summary saved to {model_summary_path}")
 
