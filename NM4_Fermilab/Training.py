@@ -38,7 +38,7 @@ data_path_2_100 = find_file("Deuteron_2_100_No_Noise_500K.csv")
 # data_path_0_2 = find_file("Deuteron_0_2_No_Noise_500K.csv")  
 # data_path_All = find_file("Deuteron_No_Noise_1M.csv")  
 
-version = 'Deuteron_All_V7'  # Rename for each new run
+version = 'Deuteron_10_80_ResNet_V1'  # Rename for each new run
 performance_dir = f"Model Performance/{version}"  
 model_dir = f"Models/{version}"  
 
@@ -46,37 +46,53 @@ model_dir = f"Models/{version}"
 os.makedirs(performance_dir, exist_ok=True)
 os.makedirs(model_dir, exist_ok=True)
 
-def Polarization(hp):
-    model = tf.keras.Sequential()
+# Define a residual block with dropout
+def residual_block(x, units, activation, dropout_rate):
+    shortcut = x
+    
+    # First part of the residual block
+    x = layers.Dense(units, activation=activation, kernel_initializer=initializers.HeNormal(),
+                     kernel_regularizer=regularizers.l2(1e-4))(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.Dropout(rate=dropout_rate)(x)  # Apply dropout
+    x = layers.Dense(units, activation=None, kernel_initializer=initializers.HeNormal(),
+                     kernel_regularizer=regularizers.l2(1e-4))(x)
+    x = layers.BatchNormalization()(x)
 
+    # Adjust shortcut if the dimensions do not match
+    if (shortcut.shape)[-1] != units:
+        shortcut = layers.Dense(units, kernel_initializer=initializers.HeNormal(),
+                                kernel_regularizer=regularizers.l2(1e-4))(shortcut)
+
+    x = layers.add([x, shortcut])  # Add the shortcut connection
+    x = layers.Activation(activation)(x)  # Apply activation after addition
+    return x
+
+def Polarization(hp):
     # Input Layer
     input_dim = 500
-    model.add(layers.InputLayer(input_shape=(input_dim,)))
+    inputs = layers.Input(shape=(input_dim,))
 
-    num_layers = hp.Int("num_layers", min_value=1, max_value=10)
-    
-    for i in range(num_layers):
-        units = hp.Choice(f"units_{i}", values=[32, 64, 128, 256, 512, 1024])
-        activation = hp.Choice(f"activation_{i}", values=["relu6", "swish", "hard_swish"])
-        dropout_rate = hp.Float(f"dropout_{i}", min_value=0.1, max_value=0.8, step=0.1)
+    # Hyperparameters for tuning
+    num_blocks = hp.Int("num_blocks", min_value=2, max_value=6)  # Number of residual blocks
+    units = hp.Choice("units", values=[64, 128, 256, 512])  # Units in each block
+    activation = hp.Choice("activation", values=["relu", "swish", "tanh"])  # Activation function
+    dropout_rate = hp.Float("dropout_rate", min_value=0.1, max_value=0.5, step=0.1)  # Dropout rate
 
-        print(f"Layer {i + 1}: Activation = {activation}")  # Debug statement
-
-        model.add(layers.Dense(
-            units=units,
-            activation=activation,
-            kernel_initializer=initializers.HeNormal(),
-            kernel_regularizer=regularizers.l2(hp.Float("l2_reg", 1e-6, 1e-2, sampling="log"))
-        ))
-        model.add(layers.Dropout(rate=dropout_rate))
-        model.add(layers.BatchNormalization())
+    # Add residual blocks
+    x = inputs
+    for _ in range(num_blocks):
+        x = residual_block(x, units, activation, dropout_rate)
 
     # Output Layer (Sigmoid for Regression)
-    model.add(layers.Dense(1, activation="sigmoid"))
+    outputs = layers.Dense(1, activation="sigmoid")(x)  # Sigmoid for output between 0 and 1
+
+    # Create the model
+    model = tf.keras.Model(inputs=inputs, outputs=outputs)
 
     # Tune the optimizer (Adam or Nadam)
     optimizer_choice = hp.Choice("optimizer", values=["adam", "nadam"])
-    learning_rate = hp.Float("learning_rate", min_value=1e-3, max_value=1e-2, sampling="log")
+    learning_rate = hp.Float("learning_rate", min_value=1e-4, max_value=1e-2, sampling="log")
 
     if optimizer_choice == "adam":
         optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
@@ -129,7 +145,7 @@ def lr_scheduler(epoch, lr):
 
 callbacks_list = [
     CSVLogger(os.path.join(performance_dir, f'training_log_{version}.csv'), append=True, separator=';'),
-    EarlyStopping(monitor='val_loss', mode='min', patience=8, verbose=0, restore_best_weights=True),
+    EarlyStopping(monitor='val_loss', mode='min', patience=5, verbose=0, restore_best_weights=True),
     ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, verbose=0, min_lr=1e-10),
     ModelCheckpoint(filepath=os.path.join(model_dir, f'best_model_{version}.keras'), save_best_only=True, monitor='val_loss', mode='min'),
     MetricsLogger(log_path=custom_metrics_log_path)
@@ -168,26 +184,21 @@ X_val = scaler.transform(X_val)
 X_test = scaler.transform(X_test)
 
 # Add Gaussian noise (mean = 0, small stddev)
-noise_std = 0.1  # Adjust as needed
+noise_std = 0.05  # Adjust as needed
 X_train += np.random.normal(0, noise_std, X_train.shape)
 X_val += np.random.normal(0, noise_std, X_val.shape)
 X_test += np.random.normal(0, noise_std, X_test.shape)
 
-# # Train using a single GPU
-# print("Compiling model...")
-# with tf.device("/GPU:0"):
-#     model = Polarization ### This is num. of columns in training data
-# print("Model compiled!")
-
 
 print("Starting training on full dataset...")
+
 # Define input dimension
 input_dim = X_train.shape[1]  # Number of features
 
 tuner = kt.BayesianOptimization(
     Polarization,
     objective="val_loss",
-    max_trials=100,
+    max_trials=30,
     directory="tuning_results",
     project_name="polarization_model"
 )
@@ -207,7 +218,7 @@ history = best_model.fit(
     X_train, y_train,
     validation_data=(X_val, y_val),
     epochs=200,
-    batch_size=128,  # Use best batch size or default
+    batch_size=64,  # Use best batch size or default
     callbacks=callbacks_list,
     verbose=1
 )
