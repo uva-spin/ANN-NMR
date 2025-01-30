@@ -5,11 +5,7 @@ import pandas as pd
 import tensorflow as tf
 from tensorflow.keras import layers, regularizers, initializers, optimizers
 from tensorflow.keras.callbacks import CSVLogger, EarlyStopping, ReduceLROnPlateau, ModelCheckpoint,LearningRateScheduler
-import keras_tuner as kt
-from keras_tuner.tuners import RandomSearch
 from sklearn.model_selection import train_test_split
-from tensorflow.keras.layers import LeakyReLU
-
 from sklearn.preprocessing import MinMaxScaler
 import matplotlib.pyplot as plt
 from Misc_Functions import *
@@ -35,87 +31,76 @@ tf.keras.mixed_precision.set_global_policy('mixed_float16')
 
 # File paths and versioning
 data_path_2_100 = find_file("Deuteron_2_100_No_Noise_500K.csv")  
-# data_path_0_2 = find_file("Deuteron_0_2_No_Noise_500K.csv")  
-# data_path_All = find_file("Deuteron_No_Noise_1M.csv")  
-
-version = 'Deuteron_10_80_ResNet_V1'  # Rename for each new run
+version = 'Deuteron_10_80_ResNet_V2'  # Rename for each new run
 performance_dir = f"Model Performance/{version}"  
 model_dir = f"Models/{version}"  
 
-# Create necessary directories
 os.makedirs(performance_dir, exist_ok=True)
 os.makedirs(model_dir, exist_ok=True)
 
-# Define a residual block with dropout
+
 def residual_block(x, units, activation, dropout_rate):
     shortcut = x
     
-    # First part of the residual block
-    x = layers.Dense(units, activation=activation, kernel_initializer=initializers.HeNormal(),
+    #Reduce dimensionality
+    x = layers.Dense(units // 4, activation=activation, kernel_initializer=initializers.HeNormal(),
                      kernel_regularizer=regularizers.l2(1e-4))(x)
     x = layers.BatchNormalization()(x)
-    x = layers.Dropout(rate=dropout_rate)(x)  # Apply dropout
+    
+    # Main transformation
+    x = layers.Dense(units // 4, activation=activation, kernel_initializer=initializers.HeNormal(),
+                     kernel_regularizer=regularizers.l2(1e-4))(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.Dropout(rate=dropout_rate)(x)
+    
+    # Restore dimensionality
     x = layers.Dense(units, activation=None, kernel_initializer=initializers.HeNormal(),
                      kernel_regularizer=regularizers.l2(1e-4))(x)
     x = layers.BatchNormalization()(x)
-
-    # Adjust shortcut if the dimensions do not match
+    
+    # Adjust shortcut if dimensions do not match
     if (shortcut.shape)[-1] != units:
         shortcut = layers.Dense(units, kernel_initializer=initializers.HeNormal(),
                                 kernel_regularizer=regularizers.l2(1e-4))(shortcut)
-
+        shortcut = layers.BatchNormalization()(shortcut)
+    
     x = layers.add([x, shortcut])  # Add the shortcut connection
     x = layers.Activation(activation)(x)  # Apply activation after addition
     return x
 
-def Polarization(hp):
-    # Input Layer
-    input_dim = 500
+def Polarization(input_dim):
     inputs = layers.Input(shape=(input_dim,))
-
-    # Hyperparameters for tuning
-    num_blocks = hp.Int("num_blocks", min_value=2, max_value=6)  # Number of residual blocks
-    units = hp.Choice("units", values=[64, 128, 256, 512])  # Units in each block
-    activation = hp.Choice("activation", values=["relu", "swish", "tanh"])  # Activation function
-    dropout_rate = hp.Float("dropout_rate", min_value=0.1, max_value=0.5, step=0.1)  # Dropout rate
-
-    # Add residual blocks
-    x = inputs
+    
+    x = layers.Dense(128, activation="swish", kernel_initializer=initializers.HeNormal(),
+                     kernel_regularizer=regularizers.l2(1e-4))(inputs)
+    x = layers.BatchNormalization()(x)
+    
+    num_blocks = 30  # Number of residual blocks 
+    units = 128     
+    activation = "swish"
+    dropout_rate = 0.1
+    
     for _ in range(num_blocks):
         x = residual_block(x, units, activation, dropout_rate)
-
-    # Output Layer (Sigmoid for Regression)
-    outputs = layers.Dense(1, activation="sigmoid")(x)  # Sigmoid for output between 0 and 1
-
-    # Create the model
+    
+    outputs = layers.Dense(1, activation="sigmoid")(x)  
+    
     model = tf.keras.Model(inputs=inputs, outputs=outputs)
-
-    # Tune the optimizer (Adam or Nadam)
-    optimizer_choice = hp.Choice("optimizer", values=["adam", "nadam"])
-    learning_rate = hp.Float("learning_rate", min_value=1e-4, max_value=1e-2, sampling="log")
-
-    if optimizer_choice == "adam":
-        optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
-    else:
-        optimizer = tf.keras.optimizers.Nadam(learning_rate=learning_rate)
-
-    # Compile model
+    
+    optimizer = optimizers.Adam(learning_rate=1e-3, clipnorm=10.0) 
     model.compile(
         optimizer=optimizer,
         loss="mse",
         metrics=["mae"]
     )
-
     return model
-
-
 
 class MetricsLogger(tf.keras.callbacks.Callback):
     def __init__(self, log_path):
         super().__init__()
         self.log_path = log_path
         self.epoch_data = []
-
+    
     def on_epoch_end(self, epoch, logs=None):
         logs = logs or {}
         lr = float(tf.keras.backend.get_value(self.model.optimizer.learning_rate))
@@ -131,48 +116,39 @@ class MetricsLogger(tf.keras.callbacks.Callback):
             'Validation Loss': validation_loss,
             'Loss Difference': loss_diff
         })
-
+    
     def on_train_end(self, logs=None):
         df = pd.DataFrame(self.epoch_data)
         df.to_csv(self.log_path, index=False)
         print(f"Custom metrics log saved to {self.log_path}")
 
-custom_metrics_log_path = os.path.join(performance_dir, f'custom_metrics_log_{version}.csv')
-
-### Learning Rate Scheduler ###
 def lr_scheduler(epoch, lr):
-    return lr * 0.9 if (epoch + 1) % 10 == 0 else lr  # Reduce LR every 10 epochs
+    warmup_epochs = 5
+    max_lr = 1e-3
+    min_lr = 1e-5
+    if epoch < warmup_epochs:
+        return lr + (max_lr - min_lr) / warmup_epochs
+    else:
+        return lr * 0.9 if (epoch + 1) % 10 == 0 else lr
 
+custom_metrics_log_path = os.path.join(performance_dir, f'custom_metrics_log_{version}.csv')
 callbacks_list = [
     CSVLogger(os.path.join(performance_dir, f'training_log_{version}.csv'), append=True, separator=';'),
-    EarlyStopping(monitor='val_loss', mode='min', patience=5, verbose=0, restore_best_weights=True),
+    EarlyStopping(monitor='val_loss', mode='min', patience=10, verbose=0, restore_best_weights=True),
     ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, verbose=0, min_lr=1e-10),
     ModelCheckpoint(filepath=os.path.join(model_dir, f'best_model_{version}.keras'), save_best_only=True, monitor='val_loss', mode='min'),
-    MetricsLogger(log_path=custom_metrics_log_path)
+    MetricsLogger(log_path=custom_metrics_log_path),
+    LearningRateScheduler(lr_scheduler)
 ]
 
-
 print("Getting data...")
-# Load datasets
 data_2_100 = pd.read_csv(data_path_2_100)
-# data_0_2 = pd.read_csv(data_path_0_2)
-# data_All = pd.read_csv(data_path_All)
-
-# Define the target variable
 target_variable = "P"
-
-# Filter datasets efficiently using .query()
 data_2_100 = data_2_100.query("0.1 <= P <= 0.8")
-# data_0_2 = data_0_2.query("0.1 <= P <= 0.8")
-# data_All = data_All.query("0.1 <= P <= 0.8")
 
-print(f"Data found at: {data_2_100}")
-
-# Split data into train (70%), validation (20%), and test (10%)
 train_data, temp_data = train_test_split(data_2_100, test_size=0.3, random_state=42, shuffle=True)
 val_data, test_data = train_test_split(temp_data, test_size=1/3, random_state=42, shuffle=True)
 
-# Separate features and target
 X_train, y_train = train_data.drop(columns=[target_variable, 'SNR']).values, train_data[target_variable].values
 X_val, y_val = val_data.drop(columns=[target_variable, 'SNR']).values, val_data[target_variable].values
 X_test, y_test = test_data.drop(columns=[target_variable, 'SNR']).values, test_data[target_variable].values
@@ -184,60 +160,32 @@ X_val = scaler.transform(X_val)
 X_test = scaler.transform(X_test)
 
 # Add Gaussian noise (mean = 0, small stddev)
-noise_std = 0.05  # Adjust as needed
+noise_std = 0.05 
 X_train += np.random.normal(0, noise_std, X_train.shape)
 X_val += np.random.normal(0, noise_std, X_val.shape)
 X_test += np.random.normal(0, noise_std, X_test.shape)
 
-
 print("Starting training on full dataset...")
+input_dim = X_train.shape[1]  
+model = Polarization(input_dim)
 
-# Define input dimension
-input_dim = X_train.shape[1]  # Number of features
-
-tuner = kt.BayesianOptimization(
-    Polarization,
-    objective="val_loss",
-    max_trials=30,
-    directory="tuning_results",
-    project_name="polarization_model"
-)
-tuner.search(
-    X_train, y_train,
-    validation_split=0.2,
-    epochs=100,
-    callbacks=callbacks_list 
-)
-
-# Get the best hyperparameters and model
-best_hps = tuner.get_best_hyperparameters(num_trials=1)[0]
-best_model = tuner.hypermodel.build(best_hps)
-
-# Train the best model on the full dataset
-history = best_model.fit(
+history = model.fit(
     X_train, y_train,
     validation_data=(X_val, y_val),
     epochs=200,
-    batch_size=64,  # Use best batch size or default
+    batch_size=64,
     callbacks=callbacks_list,
     verbose=1
 )
 
 print("Training finished!")
 
-print(best_hps.get("optimizer"))
-
-# --- SAVE MODEL DETAILS ---
-
-# Save hyperparameters
-hparams_path = os.path.join(performance_dir, "best_hyperparameters.json")
-with open(hparams_path, "w") as f:
-    json.dump(best_hps.values, f, indent=4)
+# --- SAVE MODEL DETAILS --- #
 
 # Save model architecture
 architecture_path = os.path.join(performance_dir, "model_architecture.txt")
 with open(architecture_path, "w") as f:
-    best_model.summary(print_fn=lambda x: f.write(x + "\n"))
+    model.summary(print_fn=lambda x: f.write(x + "\n"))
 
 # Save training history
 history_path = os.path.join(performance_dir, "training_history.json")
@@ -246,15 +194,13 @@ with open(history_path, "w") as f:
 
 # Save model weights
 weights_path = os.path.join(model_dir, "best_model_weights.weights.h5")
-best_model.save_weights(weights_path)
+model.save_weights(weights_path)
 
 # Save full model
 full_model_path = os.path.join(model_dir, "best_model.h5")
-best_model.save(full_model_path)
+model.save(full_model_path)
 
 print(f"✅ Model details saved in '{performance_dir}' and '{model_dir}' folders.")
-
-model = best_model
 
 
 plt.figure(figsize=(10, 6))
