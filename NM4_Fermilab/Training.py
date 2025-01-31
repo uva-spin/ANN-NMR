@@ -4,237 +4,148 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 from tensorflow.keras import layers, regularizers, initializers, optimizers
-from tensorflow.keras.callbacks import CSVLogger, EarlyStopping, ReduceLROnPlateau, ModelCheckpoint,LearningRateScheduler
+from tensorflow.keras.callbacks import CSVLogger, EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import MinMaxScaler
+from sklearn.preprocessing import StandardScaler  # Changed from MinMaxScaler
 import matplotlib.pyplot as plt
-from Misc_Functions import *
 from datetime import datetime
-
+from Misc_Functions import *
+# Configure environment for maximum performance
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-
-print("Available devices:")
-for device in tf.config.list_physical_devices():
-    print(device)
-
-physical_devices = tf.config.list_physical_devices('GPU')
-if physical_devices:
-    try:
-        tf.config.experimental.set_memory_growth(physical_devices[0], True)
-        print(f"Using GPU: {physical_devices[0]}")
-    except RuntimeError as e:
-        print(f"Error setting GPU: {e}")
-
-
+os.environ['TF_XLA_FLAGS'] = '--tf_xla_enable_xla_devices'
+os.environ['TF_XLA_FLAGS'] = '--tf_xla_auto_jit=2'
+tf.config.optimizer.set_jit(True)
 tf.keras.mixed_precision.set_global_policy('mixed_float16')
 
+# GPU Configuration
+physical_devices = tf.config.list_physical_devices('GPU')
+if physical_devices:
+    tf.config.experimental.set_memory_growth(physical_devices[0], True)
+    print(f"Using GPU: {physical_devices[0]}")
+
+# Precision Configuration
+tf.keras.backend.set_floatx('float32')
 
 # File paths and versioning
 data_path_2_100 = find_file("Deuteron_2_100_No_Noise_500K.csv")  
-version = 'Deuteron_10_80_ResNet_V2'  # Rename for each new run
+version = 'Deuteron_10_80_ResNet_V6'  # Updated version
 performance_dir = f"Model Performance/{version}"  
 model_dir = f"Models/{version}"  
 
 os.makedirs(performance_dir, exist_ok=True)
 os.makedirs(model_dir, exist_ok=True)
 
-
-def residual_block(x, units, activation, dropout_rate):
+# Optimized Model Architecture
+def residual_block(x, units):
     shortcut = x
-    
-    #Reduce dimensionality
-    x = layers.Dense(units // 4, activation=activation, kernel_initializer=initializers.HeNormal(),
-                     kernel_regularizer=regularizers.l2(1e-4))(x)
+    x = layers.Dense(units, activation=tf.nn.silu,  # Swish activation
+                     kernel_initializer="he_normal",
+                     kernel_regularizer=regularizers.l2(1e-5))(x)
     x = layers.BatchNormalization()(x)
     
-    # Main transformation
-    x = layers.Dense(units // 4, activation=activation, kernel_initializer=initializers.HeNormal(),
-                     kernel_regularizer=regularizers.l2(1e-4))(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.Dropout(rate=dropout_rate)(x)
-    
-    # Restore dimensionality
-    x = layers.Dense(units, activation=None, kernel_initializer=initializers.HeNormal(),
-                     kernel_regularizer=regularizers.l2(1e-4))(x)
-    x = layers.BatchNormalization()(x)
-    
-    # Adjust shortcut if dimensions do not match
-    if (shortcut.shape)[-1] != units:
-        shortcut = layers.Dense(units, kernel_initializer=initializers.HeNormal(),
-                                kernel_regularizer=regularizers.l2(1e-4))(shortcut)
-        shortcut = layers.BatchNormalization()(shortcut)
-    
-    x = layers.add([x, shortcut])  # Add the shortcut connection
-    x = layers.Activation(activation)(x)  # Apply activation after addition
+    if shortcut.shape[-1] != units:
+        shortcut = layers.Dense(units, kernel_initializer="he_normal")(shortcut)
+        
+    x = layers.Add()([x, shortcut])
     return x
 
 def Polarization(input_dim):
-    inputs = layers.Input(shape=(input_dim,))
+    inputs = layers.Input(shape=(input_dim,), dtype='float32')
     
-    x = layers.Dense(128, activation="swish", kernel_initializer=initializers.HeNormal(),
-                     kernel_regularizer=regularizers.l2(1e-4))(inputs)
+    # Feature transformation
+    x = layers.Dense(512, activation=tf.nn.silu,
+                    kernel_initializer=initializers.HeNormal())(inputs)
     x = layers.BatchNormalization()(x)
     
-    num_blocks = 30  # Number of residual blocks 
-    units = 128     
-    activation = "swish"
-    dropout_rate = 0.1
+    # Residual blocks
+    units = [512, 512, 256, 256, 128, 128]
+    for u in units:
+        x = residual_block(x, u)
     
-    for _ in range(num_blocks):
-        x = residual_block(x, units, activation, dropout_rate)
-    
-    outputs = layers.Dense(1, activation="sigmoid")(x)  
+    # Precision-focused final layers
+    x = layers.Dense(64, activation=tf.nn.silu,
+                    kernel_initializer=initializers.GlorotNormal())(x)
+    outputs = layers.Dense(1, activation='linear',
+                          kernel_initializer=initializers.RandomNormal(stddev=1e-4))(x)
     
     model = tf.keras.Model(inputs=inputs, outputs=outputs)
     
-    optimizer = optimizers.Adam(learning_rate=1e-3, clipnorm=10.0) 
+    optimizer = optimizers.Nadam(
+        learning_rate=5e-5,
+        beta_1=0.9,
+        beta_2=0.999,
+        clipnorm=0.1
+    )
+    
     model.compile(
         optimizer=optimizer,
-        loss="mse",
-        metrics=["mae"]
+        loss=log_cosh_precision_loss,
+        metrics=[tf.keras.metrics.MeanAbsoluteError(name='mae')]
     )
     return model
 
-class MetricsLogger(tf.keras.callbacks.Callback):
-    def __init__(self, log_path):
-        super().__init__()
-        self.log_path = log_path
-        self.epoch_data = []
-    
-    def on_epoch_end(self, epoch, logs=None):
-        logs = logs or {}
-        lr = float(tf.keras.backend.get_value(self.model.optimizer.learning_rate))
-        training_loss = logs.get('loss', None)
-        validation_loss = logs.get('val_loss', None)
-        loss_diff = None
-        if training_loss is not None and validation_loss is not None:
-            loss_diff = training_loss - validation_loss
-        self.epoch_data.append({
-            'Epoch': epoch + 1,
-            'Learning Rate': lr,
-            'Training Loss': training_loss,
-            'Validation Loss': validation_loss,
-            'Loss Difference': loss_diff
-        })
-    
-    def on_train_end(self, logs=None):
-        df = pd.DataFrame(self.epoch_data)
-        df.to_csv(self.log_path, index=False)
-        print(f"Custom metrics log saved to {self.log_path}")
+# Custom Loss Functions
+def log_cosh_precision_loss(y_true, y_pred):
+    """Hybrid loss combining log-cosh and precision weighting"""
+    error = y_true - y_pred
+    precision_weights = tf.math.exp(-10.0 * y_true) + 1e-6  # Higher weight near zero
+    return tf.reduce_mean(precision_weights * tf.math.log(cosh(error)))
 
-def lr_scheduler(epoch, lr):
-    warmup_epochs = 5
-    max_lr = 1e-3
-    min_lr = 1e-5
-    if epoch < warmup_epochs:
-        return lr + (max_lr - min_lr) / warmup_epochs
-    else:
-        return lr * 0.9 if (epoch + 1) % 10 == 0 else lr
+def cosh(x):
+    return (tf.math.exp(x) + tf.math.exp(-x)) / 2
 
-custom_metrics_log_path = os.path.join(performance_dir, f'custom_metrics_log_{version}.csv')
-callbacks_list = [
-    CSVLogger(os.path.join(performance_dir, f'training_log_{version}.csv'), append=True, separator=';'),
-    EarlyStopping(monitor='val_loss', mode='min', patience=10, verbose=0, restore_best_weights=True),
-    ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, verbose=0, min_lr=1e-10),
-    ModelCheckpoint(filepath=os.path.join(model_dir, f'best_model_{version}.keras'), save_best_only=True, monitor='val_loss', mode='min'),
-    MetricsLogger(log_path=custom_metrics_log_path),
-    LearningRateScheduler(lr_scheduler)
-]
-
+# Data Preparation
 print("Getting data...")
 data_2_100 = pd.read_csv(data_path_2_100)
-target_variable = "P"
-data_2_100 = data_2_100.query("0.1 <= P <= 0.8")
+data_2_100 = data_2_100.query("0.1 <= P <= 0.8").sample(frac=1, random_state=42)
 
-train_data, temp_data = train_test_split(data_2_100, test_size=0.3, random_state=42, shuffle=True)
-val_data, test_data = train_test_split(temp_data, test_size=1/3, random_state=42, shuffle=True)
+# Split data
+train_data, temp_data = train_test_split(data_2_100, test_size=0.3, random_state=42)
+val_data, test_data = train_test_split(temp_data, test_size=1/3, random_state=42)
 
-X_train, y_train = train_data.drop(columns=[target_variable, 'SNR']).values, train_data[target_variable].values
-X_val, y_val = val_data.drop(columns=[target_variable, 'SNR']).values, val_data[target_variable].values
-X_test, y_test = test_data.drop(columns=[target_variable, 'SNR']).values, test_data[target_variable].values
+# Feature/target separation
+X_train = train_data.drop(columns=["P", 'SNR']).values
+y_train = train_data["P"].values
+X_val = val_data.drop(columns=["P", 'SNR']).values
+y_val = val_data["P"].values
+X_test = test_data.drop(columns=["P", 'SNR']).values
+y_test = test_data["P"].values
 
-# Normalize X values to [0,1]
-scaler = MinMaxScaler()
-X_train = scaler.fit_transform(X_train)
+# Data Preprocessing
+scaler = StandardScaler().fit(X_train)
+X_train = scaler.transform(X_train)
 X_val = scaler.transform(X_val)
 X_test = scaler.transform(X_test)
 
-# Add Gaussian noise (mean = 0, small stddev)
-noise_std = 0.05 
-X_train += np.random.normal(0, noise_std, X_train.shape)
-X_val += np.random.normal(0, noise_std, X_val.shape)
-X_test += np.random.normal(0, noise_std, X_test.shape)
+# Callbacks
+callbacks_list = [
+    EarlyStopping(monitor='val_mae', patience=50, min_delta=1e-6),
+    ModelCheckpoint(os.path.join(model_dir, 'best_model.keras'),
+                   monitor='val_mae',
+                   save_best_only=True),
+    ReduceLROnPlateau(monitor='val_mae', factor=0.5, patience=15, min_lr=1e-7)
+]
 
-print("Starting training on full dataset...")
-input_dim = X_train.shape[1]  
-model = Polarization(input_dim)
-
+# Training
+model = Polarization(X_train.shape[1])
 history = model.fit(
     X_train, y_train,
     validation_data=(X_val, y_val),
-    epochs=200,
-    batch_size=64,
+    epochs=1000,
+    batch_size=256,  # Increased batch size for GPU
     callbacks=callbacks_list,
-    verbose=1
+    verbose=2
 )
 
-print("Training finished!")
+# Post-processing and Evaluation
+y_test_pred = model.predict(X_test).flatten()
+residuals = y_test - y_test_pred
 
-# --- SAVE MODEL DETAILS --- #
-
-# Save model architecture
-architecture_path = os.path.join(performance_dir, "model_architecture.txt")
-with open(architecture_path, "w") as f:
-    model.summary(print_fn=lambda x: f.write(x + "\n"))
-
-# Save training history
-history_path = os.path.join(performance_dir, "training_history.json")
-with open(history_path, "w") as f:
-    json.dump(history.history, f, indent=4)
-
-# Save model weights
-weights_path = os.path.join(model_dir, "best_model_weights.weights.h5")
-model.save_weights(weights_path)
-
-# Save full model
-full_model_path = os.path.join(model_dir, "best_model.h5")
-model.save(full_model_path)
-
-print(f"✅ Model details saved in '{performance_dir}' and '{model_dir}' folders.")
-
-
-plt.figure(figsize=(10, 6))
-plt.plot(history.history['loss'], label="Training Loss")
-plt.plot(history.history['val_loss'], label="Validation Loss")
-plt.xlabel("Epoch")
-plt.ylabel("Loss")
-plt.title("Training and Validation Loss")
-plt.legend()
-plt.grid()
-
-loss_plot_path = os.path.join(performance_dir, f'{version}_Loss_Plot.png')
-plt.savefig(loss_plot_path, dpi=600)
-
-print(f"Loss plot saved to {loss_plot_path}")
-
-
-# model_summary_path = os.path.join(performance_dir, 'model_summary.txt')
-# with open(model_summary_path, 'w') as f:
-#     model.summary(print_fn=lambda x: f.write(x + '\n'))
-
-model.save(os.path.join(model_dir, f'final_model_{version}.keras'))
-
-print("Evaluating on test data...")
-
-test_loss, test_mse, *is_anything_else_being_returned  = model.evaluate(X_test, y_test, batch_size=32)
-
-y_test_pred = model.predict(X_test)
-residuals = y_test - y_test_pred.flatten()
-
+# Save results with high precision
 test_results_df = pd.DataFrame({
-    'Actual': y_test,
-    'Predicted': y_test_pred.flatten(),
-    'Residuals': residuals
+    'Actual': y_test.round(6),
+    'Predicted': y_test_pred.round(6),
+    'Residuals': residuals.round(6)
 })
 
 print("Calculating per-sample MSE losses...")
@@ -326,18 +237,14 @@ fig.savefig(output_path,dpi=600)
 
 print(f"Histograms plotted in {output_path}!")
 
-test_summary_results = {
-    'Date': [str(datetime.now())],
-    'Test Loss': [test_loss],
-    'Test MSE': [test_mse]
-}
+# test_summary_results = {
+#     'Date': [str(datetime.now())],
+#     'Test Loss': [test_loss],
+#     'Test MSE': [test_mse]
+# }
 
-summary_results_df = pd.DataFrame(test_summary_results)
+# summary_results_df = pd.DataFrame(test_summary_results)
 
-summary_results_file = os.path.join(performance_dir, f'test_summary_results_{version}.csv')
-summary_results_df.to_csv(summary_results_file, index=False)
-
-print(f"Test Loss: {test_loss}, Test MSE: {test_mse}")
-print(f"Test summary results saved to {summary_results_file}")
-# print(f"Model summary saved to {model_summary_path}")
+# summary_results_file = os.path.join(performance_dir, f'test_summary_results_{version}.csv')
+# summary_results_df.to_csv(summary_results_file, index=False)
 
