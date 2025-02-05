@@ -28,7 +28,7 @@ tf.keras.backend.set_floatx('float32')
 
 # File paths and versioning
 data_path_2_100 = find_file("Deuteron_2_100_No_Noise_500K.csv")  
-version = 'Deuteron_10_80_ResNet_V6'  # Updated version
+version = 'Deuteron_10_80_ResNet_V7'  # Updated version
 performance_dir = f"Model Performance/{version}"  
 model_dir = f"Models/{version}"  
 
@@ -65,16 +65,25 @@ def Polarization(input_dim):
     # Precision-focused final layers
     x = layers.Dense(64, activation=tf.nn.silu,
                     kernel_initializer=initializers.GlorotNormal())(x)
-    outputs = layers.Dense(1, activation='linear',
+    outputs = layers.Dense(1, activation='sigmoid',
                           kernel_initializer=initializers.RandomNormal(stddev=1e-4))(x)
     
     model = tf.keras.Model(inputs=inputs, outputs=outputs)
     
-    optimizer = optimizers.Nadam(
-        learning_rate=5e-5,
+    # optimizer = optimizers.Nadam(
+    #     learning_rate=5e-5,
+    #     beta_1=0.9,
+    #     beta_2=0.999,
+    #     clipnorm=0.1
+    # )
+    
+    optimizer = optimizers.Adamax(
+        learning_rate=0.001,
         beta_1=0.9,
         beta_2=0.999,
-        clipnorm=0.1
+        epsilon=1e-4,
+        weight_decay=1e-3,
+        clipnorm=0.1,
     )
     
     model.compile(
