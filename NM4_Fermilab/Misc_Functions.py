@@ -6,6 +6,8 @@ import glob as glob
 import scipy.integrate as spi
 import matplotlib.pyplot as plt
 from scipy.stats import norm
+import tensorflow as tf
+
 
 def choose_random_row(csv_file):
     df = csv_file
@@ -139,5 +141,160 @@ def test_data_generator(file_path, chunk_size=10000, test_fraction=0.1):
     y_test = test_df[target_variable].values
     test_dataset = tf.data.Dataset.from_tensor_slices((X_test, y_test)).batch(1024).prefetch(tf.data.experimental.AUTOTUNE)
     return test_dataset
+
+def plot_training_metrics(history1, history2, performance_dir, version):
+    # Create a 2x2 grid of subplots
+    plt.figure(figsize=(20, 16))
+    plt.suptitle(f'Training Metrics - {version}', y=1.02, fontsize=16)
+    
+    # Phase 1 Metrics
+    ax1 = plt.subplot(2, 2, 1)
+    ax1.plot(history1.history['loss'], label='Training Loss')
+    ax1.plot(history1.history['val_loss'], label='Validation Loss')
+    ax1.set_title('Phase 1: Loss Curves')
+    ax1.set_xlabel('Epoch')
+    ax1.set_ylabel('Loss')
+    ax1.legend()
+    ax1.grid(True)
+    
+    ax2 = plt.subplot(2, 2, 2)
+    loss_diff_phase1 = np.array(history1.history['loss']) - np.array(history1.history['val_loss'])
+    ax2.plot(loss_diff_phase1, marker='o', label="Loss Difference")
+    ax2.axhline(0, color='red', linestyle='--', label="Zero Difference")
+    ax2.set_title('Phase 1: Training-Validation Loss Difference')
+    ax2.set_xlabel('Epoch')
+    ax2.set_ylabel('Loss Difference')
+    ax2.legend()
+    ax2.grid(True)
+    
+    # Phase 2 Metrics
+    ax3 = plt.subplot(2, 2, 3)
+    ax3.plot(history2.history['loss'], label='Training Loss')
+    ax3.plot(history2.history['val_loss'], label='Validation Loss')
+    ax3.set_title('Phase 2: Loss Curves')
+    ax3.set_xlabel('Epoch')
+    ax3.set_ylabel('Loss')
+    ax3.legend()
+    ax3.grid(True)
+    
+    ax4 = plt.subplot(2, 2, 4)
+    loss_diff_phase2 = np.array(history2.history['loss']) - np.array(history2.history['val_loss'])
+    ax4.plot(loss_diff_phase2, marker='o', label="Loss Difference")
+    ax4.axhline(0, color='red', linestyle='--', label="Zero Difference")
+    ax4.set_title('Phase 2: Training-Validation Loss Difference')
+    ax4.set_xlabel('Epoch')
+    ax4.set_ylabel('Loss Difference')
+    ax4.legend()
+    ax4.grid(True)
+    
+    plt.tight_layout()
+    metrics_plot_path = os.path.join(performance_dir, f'{version}_Training_Metrics.png')
+    plt.savefig(metrics_plot_path, dpi=600, bbox_inches='tight')
+    plt.close()
+    print(f"Training metrics plot saved to {metrics_plot_path}")
+
+def plot_range_specific_metrics(y_true, y_pred, performance_dir, version):
+    # Create bins for different polarization ranges
+    bins = [
+        (0, 0.001),    # 0-0.1%
+        (0.001, 0.01),  # 0.1-1%
+        (0.01, 0.1),    # 1-10%
+        (0.1, 0.8)     # 10-80%
+    ]
+    
+    plt.figure(figsize=(18, 12))
+    plt.suptitle(f'Range-Specific Metrics - {version}', y=1.02, fontsize=16)
+    
+    for i, (lower, upper) in enumerate(bins):
+        # Filter data for current range
+        mask = (y_true >= lower) & (y_true < upper)
+        y_true_range = y_true[mask]
+        y_pred_range = y_pred[mask]
+        
+        if len(y_true_range) == 0:
+            continue
+        
+        # Calculate metrics
+        residuals = y_true_range - y_pred_range
+        mae = np.mean(np.abs(residuals))
+        mse = np.mean(residuals**2)
+        
+        # Create subplot
+        ax = plt.subplot(2, 2, i+1)
+        
+        # Scatter plot of predictions vs true values
+        ax.scatter(y_true_range, y_pred_range, alpha=0.5, label=f'Predictions (MAE: {mae:.2e}, MSE: {mse:.2e})')
+        ax.plot([lower, upper], [lower, upper], 'r--', label='Ideal Prediction')
+        ax.set_title(f'Polarization Range: {lower*100:.1f}% to {upper*100:.1f}%')
+        ax.set_xlabel('True Values')
+        ax.set_ylabel('Predictions')
+        ax.legend()
+        ax.grid(True)
+    
+    plt.tight_layout()
+    range_metrics_path = os.path.join(performance_dir, f'{version}_Range_Specific_Metrics.png')
+    plt.savefig(range_metrics_path, dpi=600, bbox_inches='tight')
+    plt.close()
+    print(f"Range-specific metrics plot saved to {range_metrics_path}")
+
+
+import tensorflow as tf
+
+class LookaheadWrapper:
+    def __init__(self, optimizer, sync_period=5, alpha=0.5):
+        """
+        Implements Lookahead by wrapping a base optimizer.
+
+        Parameters:
+        - optimizer: The base optimizer (e.g., AdamW, Adamax, RMSprop)
+        - sync_period: Number of steps before slow weights update
+        - alpha: Interpolation factor (0.0 = no effect, 1.0 = full Lookahead)
+        """
+        self.optimizer = optimizer
+        self.sync_period = sync_period
+        self.alpha = alpha
+        self.step_counter = 0
+        self.slow_weights = None
+
+    def apply_gradients(self, grads_and_vars):
+        """Apply gradients using the base optimizer and perform Lookahead updates."""
+        self.optimizer.apply_gradients(grads_and_vars)
+        self.step_counter += 1
+
+        if self.step_counter % self.sync_period == 0:
+            if self.slow_weights is None:
+                self.slow_weights = [tf.Variable(var.read_value(), trainable=False) for _, var in grads_and_vars]
+
+            # Perform Lookahead update: slow_weight = slow_weight + α * (fast_weight - slow_weight)
+            for slow_var, (_, fast_var) in zip(self.slow_weights, grads_and_vars):
+                slow_var.assign(slow_var + self.alpha * (fast_var - slow_var))
+                fast_var.assign(slow_var)
+
+    def get_config(self):
+        """Return config for serialization (optional)."""
+        return {
+            "sync_period": self.sync_period,
+            "alpha": self.alpha,
+            "optimizer": self.optimizer.get_config()
+        }
+
+
+# Custom Loss Functions
+def log_cosh_precision_loss(y_true, y_pred):
+    """Hybrid loss combining log-cosh and precision weighting"""
+    error = y_true - y_pred
+    precision_weights = tf.math.exp(-10.0 * y_true) + 1e-6  # Higher weight near zero
+    return tf.reduce_mean(precision_weights * tf.math.log(cosh(error)))
+
+def cosh(x):
+    return (tf.math.exp(x) + tf.math.exp(-x)) / 2
+
+def balanced_precision_loss(y_true, y_pred):
+    """Custom loss that ensures equal precision across the entire range."""
+    error = y_true - y_pred
+    # Apply log-scaling to avoid over-penalizing small values
+    precision_weights = 1 / (tf.math.log1p(y_true + 1e-2) + 1.0)  # Log scaling
+    return tf.reduce_mean(precision_weights * tf.math.log(tf.cosh(error)))
+
 
 

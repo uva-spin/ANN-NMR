@@ -16,6 +16,7 @@ os.environ['TF_XLA_FLAGS'] = '--tf_xla_enable_xla_devices'
 os.environ['TF_XLA_FLAGS'] = '--tf_xla_auto_jit=2'
 tf.config.optimizer.set_jit(True)
 tf.keras.mixed_precision.set_global_policy('mixed_float16')
+# tf.keras.backend.set_floatx('float64'))
 
 # GPU Configuration
 physical_devices = tf.config.list_physical_devices('GPU')
@@ -27,11 +28,10 @@ if physical_devices:
 tf.keras.backend.set_floatx('float32')
 
 # File paths and versioning
-data_path_2_100 = find_file("Deuteron_2_100_No_Noise_500K.csv")  
-version = 'Deuteron_10_80_ResNet_V7'  # Updated version
+data_path_2_100 = find_file("Deuteron_No_Noise_1M.csv")  
+version = 'Deuteron_0_10_ResNet_V4_Without_Either'  # Updated version
 performance_dir = f"Model Performance/{version}"  
 model_dir = f"Models/{version}"  
-
 os.makedirs(performance_dir, exist_ok=True)
 os.makedirs(model_dir, exist_ok=True)
 
@@ -42,6 +42,8 @@ def residual_block(x, units):
                      kernel_initializer="he_normal",
                      kernel_regularizer=regularizers.l2(1e-5))(x)
     x = layers.BatchNormalization()(x)
+    x = layers.Dropout(0.5)(x)
+
     
     if shortcut.shape[-1] != units:
         shortcut = layers.Dense(units, kernel_initializer="he_normal")(shortcut)
@@ -51,62 +53,43 @@ def residual_block(x, units):
 
 def Polarization(input_dim):
     inputs = layers.Input(shape=(input_dim,), dtype='float32')
-    
+
     # Feature transformation
     x = layers.Dense(512, activation=tf.nn.silu,
                     kernel_initializer=initializers.HeNormal())(inputs)
     x = layers.BatchNormalization()(x)
-    
     # Residual blocks
-    units = [512, 512, 256, 256, 128, 128]
+    units = [256, 128, 64, 32]
     for u in units:
         x = residual_block(x, u)
-    
-    # Precision-focused final layers
-    x = layers.Dense(64, activation=tf.nn.silu,
-                    kernel_initializer=initializers.GlorotNormal())(x)
-    outputs = layers.Dense(1, activation='sigmoid',
+
+
+    outputs = layers.Dense(1, activation=lambda x: tf.math.softplus(x) - 1e-4,
                           kernel_initializer=initializers.RandomNormal(stddev=1e-4))(x)
     
     model = tf.keras.Model(inputs=inputs, outputs=outputs)
-    
-    # optimizer = optimizers.Nadam(
-    #     learning_rate=5e-5,
-    #     beta_1=0.9,
-    #     beta_2=0.999,
-    #     clipnorm=0.1
-    # )
-    
-    optimizer = optimizers.Adamax(
-        learning_rate=0.001,
-        beta_1=0.9,
-        beta_2=0.999,
-        epsilon=1e-4,
-        weight_decay=1e-3,
-        clipnorm=0.1,
+
+    optimizer = tf.keras.optimizers.AdamW(
+    learning_rate=0.001,  # Tuned learning rate
+    weight_decay=1e-3,    # Helps prevent overfitting
+    beta_1=0.9,
+    beta_2=0.999,
+    epsilon=1e-4,
+    clipnorm=0.1
     )
-    
+
     model.compile(
         optimizer=optimizer,
-        loss=log_cosh_precision_loss,
+        loss=balanced_precision_loss,
         metrics=[tf.keras.metrics.MeanAbsoluteError(name='mae')]
     )
     return model
 
-# Custom Loss Functions
-def log_cosh_precision_loss(y_true, y_pred):
-    """Hybrid loss combining log-cosh and precision weighting"""
-    error = y_true - y_pred
-    precision_weights = tf.math.exp(-10.0 * y_true) + 1e-6  # Higher weight near zero
-    return tf.reduce_mean(precision_weights * tf.math.log(cosh(error)))
-
-def cosh(x):
-    return (tf.math.exp(x) + tf.math.exp(-x)) / 2
 
 # Data Preparation
 print("Getting data...")
 data_2_100 = pd.read_csv(data_path_2_100)
-data_2_100 = data_2_100.query("0.1 <= P <= 0.8").sample(frac=1, random_state=42)
+data_2_100 = data_2_100.query("0.0 <= P <= 0.1").sample(frac=1, random_state=42)
 
 # Split data
 train_data, temp_data = train_test_split(data_2_100, test_size=0.3, random_state=42)
@@ -121,10 +104,13 @@ X_test = test_data.drop(columns=["P", 'SNR']).values
 y_test = test_data["P"].values
 
 # Data Preprocessing
-scaler = StandardScaler().fit(X_train)
-X_train = scaler.transform(X_train)
-X_val = scaler.transform(X_val)
-X_test = scaler.transform(X_test)
+# scaler = StandardScaler().fit(X_train)
+# X_train = scaler.transform(X_train)
+# X_val = scaler.transform(X_val)
+# X_test = scaler.transform(X_test)
+
+# noise_std = 0.01  # Standard deviation of the Gaussian noise (adjust as needed)
+# X_train = X_train + np.random.normal(loc=0.0, scale=noise_std, size=X_train.shape)
 
 # Callbacks
 callbacks_list = [
@@ -141,7 +127,7 @@ history = model.fit(
     X_train, y_train,
     validation_data=(X_val, y_val),
     epochs=1000,
-    batch_size=256,  # Increased batch size for GPU
+    batch_size=512,  # Increased batch size for GPU
     callbacks=callbacks_list,
     verbose=2
 )
