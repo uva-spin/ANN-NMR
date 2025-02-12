@@ -297,4 +297,23 @@ def balanced_precision_loss(y_true, y_pred):
     return tf.reduce_mean(precision_weights * tf.math.log(tf.cosh(error)))
 
 
+@tf.function(jit_compile=True)
+def adaptive_weighted_huber_loss(y_true, y_pred):
+    # Convert inputs to float32 to avoid precision mismatch
+    y_true = tf.cast(y_true, tf.float32)
+    y_pred = tf.cast(y_pred, tf.float32)
+
+    error = tf.abs(y_true - y_pred)
+
+    # **Penalty for underestimating small values**
+    small_value_penalty = tf.where((y_true < 0.01) & (y_pred > y_true), 20.0, 1.0)
+
+    # **Huber Loss with Adaptive Weights**
+    huber = tf.where(error < 1e-3, 0.5 * tf.square(error), 1e-3 * (error - 0.5 * 1e-3))
+
+    # Ensure output remains float32
+    return tf.reduce_mean(tf.cast(small_value_penalty, tf.float32) * huber)
+
+
+
 

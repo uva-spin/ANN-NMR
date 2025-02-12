@@ -6,9 +6,8 @@ import tensorflow as tf
 from tensorflow.keras import layers, regularizers, initializers, optimizers
 from tensorflow.keras.callbacks import CSVLogger, EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler  # Changed from MinMaxScaler
+from sklearn.preprocessing import MinMaxScaler
 import matplotlib.pyplot as plt
-from datetime import datetime
 from Misc_Functions import *
 # Configure environment for maximum performance
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
@@ -25,65 +24,74 @@ if physical_devices:
     print(f"Using GPU: {physical_devices[0]}")
 
 # Precision Configuration
-tf.keras.backend.set_floatx('float32')
+tf.keras.backend.set_floatx('float64')
 
 # File paths and versioning
 data_path_2_100 = find_file("Deuteron_No_Noise_1M.csv")  
-version = 'Deuteron_0_10_ResNet_V4_Without_Either'  # Updated version
+version = 'Deuteron_0_10_ResNet_V7'  # Updated version
 performance_dir = f"Model Performance/{version}"  
 model_dir = f"Models/{version}"  
 os.makedirs(performance_dir, exist_ok=True)
 os.makedirs(model_dir, exist_ok=True)
 
-# Optimized Model Architecture
-def residual_block(x, units):
+def residual_block(x, units, dropout_rate=0.5):
+    """
+    A residual block with two dense layers, dropout, and a skip connection.
+    If the number of units changes, a projection layer is added to the shortcut.
+    """
     shortcut = x
-    x = layers.Dense(units, activation=tf.nn.silu,  # Swish activation
-                     kernel_initializer="he_normal",
-                     kernel_regularizer=regularizers.l2(1e-5))(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.Dropout(0.5)(x)
 
-    
+    # Main path
+    x = layers.Dense(units, activation=tf.nn.silu, kernel_initializer=initializers.HeNormal())(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.Dropout(dropout_rate)(x)  # Dropout after activation
+    x = layers.Dense(units, activation=tf.nn.silu, kernel_initializer=initializers.HeNormal())(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.Dropout(dropout_rate)(x)  # Dropout after activation
+
+    # Shortcut path: Add a projection layer if the shape changes
     if shortcut.shape[-1] != units:
-        shortcut = layers.Dense(units, kernel_initializer="he_normal")(shortcut)
-        
-    x = layers.Add()([x, shortcut])
+        shortcut = layers.Dense(units, kernel_initializer=initializers.HeNormal())(shortcut)
+
+    # Add skip connection
+    x = layers.Add()([shortcut, x])
     return x
 
-def Polarization(input_dim):
-    inputs = layers.Input(shape=(input_dim,), dtype='float32')
+def Polarization(input_dim=500, num_layers=10, initial_nodes=500):
+    inputs = layers.Input(shape=(input_dim,), dtype='float64')
 
-    # Feature transformation
-    x = layers.Dense(512, activation=tf.nn.silu,
+    x = layers.Dense(initial_nodes, activation=tf.nn.silu,
                     kernel_initializer=initializers.HeNormal())(inputs)
     x = layers.BatchNormalization()(x)
-    # Residual blocks
-    units = [256, 128, 64, 32]
+
+    reduction_factor = (1 / initial_nodes) ** (1 / num_layers)
+    units = [max(1, int(initial_nodes * (reduction_factor ** i))) for i in range(num_layers)]
+
     for u in units:
         x = residual_block(x, u)
 
-
-    outputs = layers.Dense(1, activation=lambda x: tf.math.softplus(x) - 1e-4,
-                          kernel_initializer=initializers.RandomNormal(stddev=1e-4))(x)
+    # Use Softplus activation to improve precision for small values
+    outputs = layers.Dense(1, activation=tf.nn.softplus, kernel_initializer=initializers.HeNormal())(x)
     
     model = tf.keras.Model(inputs=inputs, outputs=outputs)
 
+
+    # Learning Rate Schedule
+    lr_schedule = tf.keras.optimizers.schedules.CosineDecay(
+        initial_learning_rate=3e-4, decay_steps=20000, alpha=1e-6
+    )
+
     optimizer = tf.keras.optimizers.AdamW(
-    learning_rate=0.001,  # Tuned learning rate
-    weight_decay=1e-3,    # Helps prevent overfitting
-    beta_1=0.9,
-    beta_2=0.999,
-    epsilon=1e-4,
-    clipnorm=0.1
+        learning_rate=lr_schedule, weight_decay=1e-3, epsilon=1e-7
     )
 
     model.compile(
         optimizer=optimizer,
-        loss=balanced_precision_loss,
+        loss=weighted_huber_loss(delta=1e-3),
         metrics=[tf.keras.metrics.MeanAbsoluteError(name='mae')]
     )
     return model
+
 
 
 # Data Preparation
@@ -103,13 +111,18 @@ y_val = val_data["P"].values
 X_test = test_data.drop(columns=["P", 'SNR']).values
 y_test = test_data["P"].values
 
-# Data Preprocessing
-# scaler = StandardScaler().fit(X_train)
-# X_train = scaler.transform(X_train)
-# X_val = scaler.transform(X_val)
-# X_test = scaler.transform(X_test)
 
-# noise_std = 0.01  # Standard deviation of the Gaussian noise (adjust as needed)
+y_train = np.log1p(y_train)  # log1p(x) = log(1+x), avoids log(0)
+y_val = np.log1p(y_val)
+y_test = np.log1p(y_test)
+
+# Data Preprocessing
+scaler = MinMaxScaler().fit(X_train)
+X_train = scaler.transform(X_train)
+X_val = scaler.transform(X_val)
+X_test = scaler.transform(X_test)
+
+# noise_std = 0.0004  # Standard deviation of the Gaussian noise (adjust as needed)
 # X_train = X_train + np.random.normal(loc=0.0, scale=noise_std, size=X_train.shape)
 
 # Callbacks
@@ -127,13 +140,14 @@ history = model.fit(
     X_train, y_train,
     validation_data=(X_val, y_val),
     epochs=1000,
-    batch_size=512,  # Increased batch size for GPU
+    batch_size=128,  # Increased batch size for GPU
     callbacks=callbacks_list,
     verbose=2
 )
 
 # Post-processing and Evaluation
-y_test_pred = model.predict(X_test).flatten()
+# y_test_pred = model.predict(X_test).flatten()
+y_test_pred = np.expm1(model.predict(X_test))  # Inverse transform
 residuals = y_test - y_test_pred
 
 # Save results with high precision
