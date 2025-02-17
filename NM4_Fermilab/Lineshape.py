@@ -284,7 +284,7 @@ def Baseline(f, U, Cknob, eta, trim, Cstray, phi_const, DC_offset):
     offset = np.array([x - min(out_y.real) for x in out_y.real])
     return offset.real + DC_offset
 
-def GenerateLineshape(P):
+def GenerateLineshape(P,x):
     
     def cosal(x,eps):
         return (1-eps*x-s)/bigxsquare(x,eps)
@@ -320,23 +320,12 @@ def GenerateLineshape(P):
     def icurve(x,eps):
         return mult_term(x,eps)*(2*cosaltwo(x,eps)*termone(x,eps)+sinaltwo(x,eps)*termtwo(x,eps))
     
-    
-    center = 250
-    length = range(500)
-    norm_array = []
-    for x in length:
-        norm_array = np.append(norm_array,(x - center)*(12/500))  
-    Iplus = icurve(norm_array,1)
-    Iminus = icurve(norm_array,-1)
-    
     r = (np.sqrt(4-3*P**(2))+P)/(2-2*P)
-    Iminus = icurve(norm_array,-1)
-    array = r*Iminus
-    array_flipped = np.flip(array)
-    element_1 = array_flipped+Iminus
-    sum_array = np.sum(array_flipped)*(12/500)
-    element_2 = 1/sum_array
-    element_3 = P
-    signal = element_1*element_2*element_3
-    result = signal
-    return result
+    Iplus = r*icurve(x,1)/10
+    Iminus = icurve(x,-1)/10
+    signal = Iplus + Iminus
+    return signal,Iplus,Iminus
+
+
+
+

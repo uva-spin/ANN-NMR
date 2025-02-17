@@ -6,16 +6,22 @@ import tensorflow as tf
 from tensorflow.keras import layers, regularizers, initializers, optimizers
 from tensorflow.keras.callbacks import CSVLogger, EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import MinMaxScaler
+from sklearn.preprocessing import MinMaxScaler,StandardScaler
 import matplotlib.pyplot as plt
 from Misc_Functions import *
+import random
+
+
+### Let's set a specific seed for benchmarking
+random.seed(42)
+
+
 # Configure environment for maximum performance
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['TF_XLA_FLAGS'] = '--tf_xla_enable_xla_devices'
 os.environ['TF_XLA_FLAGS'] = '--tf_xla_auto_jit=2'
 tf.config.optimizer.set_jit(True)
 tf.keras.mixed_precision.set_global_policy('mixed_float16')
-# tf.keras.backend.set_floatx('float64'))
 
 # GPU Configuration
 physical_devices = tf.config.list_physical_devices('GPU')
@@ -27,127 +33,124 @@ if physical_devices:
 tf.keras.backend.set_floatx('float64')
 
 # File paths and versioning
-data_path_2_100 = find_file("Deuteron_No_Noise_1M.csv")  
-version = 'Deuteron_0_10_ResNet_V7'  # Updated version
+data_path = find_file("Deuteron_0_10_No_Noise_500K.csv")  
+version = 'Deuteron_0_10_ResNet_V10'  # Updated version
 performance_dir = f"Model Performance/{version}"  
 model_dir = f"Models/{version}"  
 os.makedirs(performance_dir, exist_ok=True)
 os.makedirs(model_dir, exist_ok=True)
 
-def residual_block(x, units, dropout_rate=0.5):
-    """
-    A residual block with two dense layers, dropout, and a skip connection.
-    If the number of units changes, a projection layer is added to the shortcut.
-    """
+# 🔹 Residual Block with L1 & L2 Regularization for Precision
+def residual_block(x, units, dropout_rate=0.2, l1=1e-5, l2=1e-4):
     shortcut = x
-
-    # Main path
-    x = layers.Dense(units, activation=tf.nn.silu, kernel_initializer=initializers.HeNormal())(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.Dropout(dropout_rate)(x)  # Dropout after activation
-    x = layers.Dense(units, activation=tf.nn.silu, kernel_initializer=initializers.HeNormal())(x)
-    x = layers.BatchNormalization()(x)
-    x = layers.Dropout(dropout_rate)(x)  # Dropout after activation
-
-    # Shortcut path: Add a projection layer if the shape changes
-    if shortcut.shape[-1] != units:
-        shortcut = layers.Dense(units, kernel_initializer=initializers.HeNormal())(shortcut)
-
-    # Add skip connection
-    x = layers.Add()([shortcut, x])
-    return x
-
-def Polarization(input_dim=500, num_layers=10, initial_nodes=500):
-    inputs = layers.Input(shape=(input_dim,), dtype='float64')
-
-    x = layers.Dense(initial_nodes, activation=tf.nn.silu,
-                    kernel_initializer=initializers.HeNormal())(inputs)
-    x = layers.BatchNormalization()(x)
-
-    reduction_factor = (1 / initial_nodes) ** (1 / num_layers)
-    units = [max(1, int(initial_nodes * (reduction_factor ** i))) for i in range(num_layers)]
-
-    for u in units:
-        x = residual_block(x, u)
-
-    # Use Softplus activation to improve precision for small values
-    outputs = layers.Dense(1, activation=tf.nn.softplus, kernel_initializer=initializers.HeNormal())(x)
+    x = layers.Dense(units, activation='swish', 
+                     kernel_initializer='he_normal', 
+                     kernel_regularizer=regularizers.l1_l2(l1=l1, l2=l2), 
+                     dtype='float64')(x)
+    x = layers.LayerNormalization()(x)  # 🔹 LayerNorm for numerical stability
+    x = layers.Dropout(dropout_rate)(x)
     
+    if shortcut.shape[-1] != units:
+        shortcut = layers.Dense(units, activation='swish', 
+                                kernel_initializer='he_normal', 
+                                kernel_regularizer=regularizers.l1_l2(l1=l1, l2=l2), 
+                                dtype='float64')(shortcut)
+        shortcut = layers.LayerNormalization()(shortcut)
+    
+    return layers.Add()([shortcut, x])
+
+# 🔹 Model Definition with L1 & L2 Regularization
+def Polarization():
+    inputs = layers.Input(shape=(500,), dtype='float64')
+
+    x = layers.LayerNormalization()(inputs)  # 🔹 Normalize input for better precision
+
+    units = [64, 32]
+    for u in units:
+        x = residual_block(x, u, dropout_rate=0.2, l1=1e-5, l2=1e-4)
+
+    x = layers.Dropout(0.1)(x)  # 🔹 Monte Carlo Dropout for uncertainty tracking
+
+    outputs = layers.Dense(1, 
+                activation='linear',  
+                kernel_initializer=initializers.HeNormal(),
+                kernel_regularizer=regularizers.l1_l2(l1=1e-5, l2=1e-4),  # 🔹 Apply L1 & L2 to output layer
+                dtype='float64')(x)
+
     model = tf.keras.Model(inputs=inputs, outputs=outputs)
 
-
-    # Learning Rate Schedule
-    lr_schedule = tf.keras.optimizers.schedules.CosineDecay(
-        initial_learning_rate=3e-4, decay_steps=20000, alpha=1e-6
-    )
-
-    optimizer = tf.keras.optimizers.AdamW(
-        learning_rate=lr_schedule, weight_decay=1e-3, epsilon=1e-7
+    optimizer = optimizers.AdamW(
+        learning_rate=0.0001, 
+        weight_decay=1e-3, 
+        epsilon=1e-6,  # 🔹 Smaller epsilon for precise updates
+        clipnorm=0.1,  
     )
 
     model.compile(
         optimizer=optimizer,
-        loss=weighted_huber_loss(delta=1e-3),
-        metrics=[tf.keras.metrics.MeanAbsoluteError(name='mae')]
+        loss=tf.keras.losses.LogCosh(),
+        metrics=[relative_percent_error,tf.keras.metrics.MeanAbsoluteError(name='mae')]
     )
+
     return model
 
 
+# 🔹 Load Data
+print("Loading data...")
+data = pd.read_csv(data_path)
 
-# Data Preparation
-print("Getting data...")
-data_2_100 = pd.read_csv(data_path_2_100)
-data_2_100 = data_2_100.query("0.0 <= P <= 0.1").sample(frac=1, random_state=42)
-
-# Split data
-train_data, temp_data = train_test_split(data_2_100, test_size=0.3, random_state=42)
+# 🔹 Split Data
+train_data, temp_data = train_test_split(data, test_size=0.3, random_state=42)
 val_data, test_data = train_test_split(temp_data, test_size=1/3, random_state=42)
 
-# Feature/target separation
-X_train = train_data.drop(columns=["P", 'SNR']).values
-y_train = train_data["P"].values
-X_val = val_data.drop(columns=["P", 'SNR']).values
-y_val = val_data["P"].values
-X_test = test_data.drop(columns=["P", 'SNR']).values
-y_test = test_data["P"].values
+# 🔹 Feature/Target Separation
+X_train = train_data.drop(columns=["P", 'SNR']).astype('float64').values
+y_train = train_data["P"].astype('float64').values
+X_val = val_data.drop(columns=["P", 'SNR']).astype('float64').values
+y_val = val_data["P"].astype('float64').values
+X_test = test_data.drop(columns=["P", 'SNR']).astype('float64').values
+y_test = test_data["P"].astype('float64').values
 
+# 🔹 Normalize Data
+scaler = StandardScaler().fit(X_train)
+X_train = scaler.transform(X_train).astype('float64')
+X_val = scaler.transform(X_val).astype('float64')
+X_test = scaler.transform(X_test).astype('float64')
 
-y_train = np.log1p(y_train)  # log1p(x) = log(1+x), avoids log(0)
-y_val = np.log1p(y_val)
-y_test = np.log1p(y_test)
+# 🔹 Callbacks for Monitoring & Training Stability
+tensorboard_callback = CustomTensorBoard(log_dir='./logs')
+early_stopping = tf.keras.callbacks.EarlyStopping(
+    monitor='val_mae',  
+    patience=10,        
+    min_delta=1e-6,     
+    mode='min',         
+    restore_best_weights=True  
+)
 
-# Data Preprocessing
-scaler = MinMaxScaler().fit(X_train)
-X_train = scaler.transform(X_train)
-X_val = scaler.transform(X_val)
-X_test = scaler.transform(X_test)
-
-# noise_std = 0.0004  # Standard deviation of the Gaussian noise (adjust as needed)
-# X_train = X_train + np.random.normal(loc=0.0, scale=noise_std, size=X_train.shape)
-
-# Callbacks
 callbacks_list = [
-    EarlyStopping(monitor='val_mae', patience=50, min_delta=1e-6),
-    ModelCheckpoint(os.path.join(model_dir, 'best_model.keras'),
+    early_stopping,
+    tf.keras.callbacks.ModelCheckpoint(os.path.join(model_dir, 'best_model.keras'),
                    monitor='val_mae',
                    save_best_only=True),
-    ReduceLROnPlateau(monitor='val_mae', factor=0.5, patience=15, min_lr=1e-7)
+    tf.keras.callbacks.ReduceLROnPlateau(monitor='val_mae', factor=0.5, patience=15, min_lr=1e-7),
+    tensorboard_callback,
+    tf.keras.callbacks.CSVLogger(os.path.join(performance_dir, 'training_log.csv'))
 ]
 
-# Training
-model = Polarization(X_train.shape[1])
+# 🔹 Train Model
+model = Polarization()
 history = model.fit(
     X_train, y_train,
     validation_data=(X_val, y_val),
     epochs=1000,
-    batch_size=128,  # Increased batch size for GPU
+    batch_size=256,  # 🔹 Increased batch size for GPU
     callbacks=callbacks_list,
     verbose=2
 )
 
 # Post-processing and Evaluation
-# y_test_pred = model.predict(X_test).flatten()
-y_test_pred = np.expm1(model.predict(X_test))  # Inverse transform
+y_test_pred = model.predict(X_test).flatten()
+# y_test_pred = np.expm1(model.predict(X_test))  # Inverse transform
 residuals = y_test - y_test_pred
 
 # Save results with high precision
@@ -157,9 +160,9 @@ test_results_df = pd.DataFrame({
     'Residuals': residuals.round(6)
 })
 
-print("Calculating per-sample MSE losses...")
-individual_losses = np.square(y_test - y_test_pred.flatten())  # MSE per sample
+print("Calculating per-sample RPE losses...")
 
+individual_losses = relative_percent_error(y_test,y_test_pred)
 loss_results_df = pd.DataFrame({
     'Polarization': y_test,
     'Loss': individual_losses
@@ -171,8 +174,8 @@ print(f"Per-sample loss results saved to {loss_results_file}")
 plt.figure(figsize=(10, 6))
 plt.scatter(y_test, individual_losses, alpha=0.6, color='blue', edgecolors='w', s=50)
 plt.xlabel('Polarization (True Values)', fontsize=14)
-plt.ylabel('Loss (MSE)', fontsize=14)
-plt.title('Polarization vs. Loss (MSE)', fontsize=16)
+plt.ylabel('Loss (RPE)', fontsize=14)
+plt.title('Polarization vs. Loss (RPE)', fontsize=16)
 plt.grid(True, linestyle='--', alpha=0.7)
 plt.tight_layout()
 
@@ -245,15 +248,3 @@ output_path = os.path.join(performance_dir, f'{version}_Histograms.png')
 fig.savefig(output_path,dpi=600)
 
 print(f"Histograms plotted in {output_path}!")
-
-# test_summary_results = {
-#     'Date': [str(datetime.now())],
-#     'Test Loss': [test_loss],
-#     'Test MSE': [test_mse]
-# }
-
-# summary_results_df = pd.DataFrame(test_summary_results)
-
-# summary_results_file = os.path.join(performance_dir, f'test_summary_results_{version}.csv')
-# summary_results_df.to_csv(summary_results_file, index=False)
-

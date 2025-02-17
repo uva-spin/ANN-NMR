@@ -7,6 +7,7 @@ import scipy.integrate as spi
 import matplotlib.pyplot as plt
 from scipy.stats import norm
 import tensorflow as tf
+from tensorflow.keras.layers import Layer
 
 
 def choose_random_row(csv_file):
@@ -315,5 +316,124 @@ def adaptive_weighted_huber_loss(y_true, y_pred):
     return tf.reduce_mean(tf.cast(small_value_penalty, tf.float32) * huber)
 
 
+def scaled_mse(y_true, y_pred):
+    return tf.reduce_mean((100000 * (y_true - y_pred)) ** 2)  # Amplify small differences
+
+def relative_squared_error(y_true, y_pred):
+    # Calculate the numerator: squared difference between true and predicted values
+    numerator = tf.reduce_sum(tf.square(y_true - y_pred))
+    
+    # Calculate the denominator: squared difference between true values and their mean
+    y_true_mean = tf.reduce_mean(y_true)
+    denominator = tf.reduce_sum(tf.square(y_true - y_true_mean))
+    
+    # Add a small epsilon to avoid division by zero
+    epsilon = tf.keras.backend.epsilon()  # Typically 1e-7
+    rse = 100.0*(numerator / (denominator + epsilon))
+    
+    # Debugging: Print values
+    # tf.print("Numerator:", numerator, "Denominator:", denominator, "RSE:", rse)
+    
+    return rse
 
 
+def relative_percent_error(y_true, y_pred):
+    """
+    Custom loss function: Relative Percent Error (RPE).
+    
+    Args:
+        y_true: True values (ground truth).
+        y_pred: Predicted values.
+    
+    Returns:
+        RPE loss.
+    """
+    y_true = tf.cast(y_true, tf.float32)
+    y_pred = tf.cast(y_pred, tf.float32)
+    
+    rpe = tf.abs((y_true - y_pred) / (y_true)) * 100.0
+    
+    # Return the mean RPE over the batch
+    return tf.reduce_mean(rpe)
+
+def RPE_MAE(y_true, y_pred):
+    rpe = relative_percent_error(y_true, y_pred)
+    mae = tf.keras.losses.MeanAbsoluteError()(y_true, y_pred)
+    return rpe + mae
+
+# 🔹 Custom TensorBoard Callback to Log Weights & Gradients
+class CustomTensorBoard(tf.keras.callbacks.Callback):
+    def __init__(self, log_dir='./logs', validation_data=None):
+        super().__init__()
+        self.writer = tf.summary.create_file_writer(log_dir)
+        self.validation_data = validation_data  # Store validation data for computing metrics
+
+    def on_epoch_end(self, epoch, logs=None):
+        logs = logs or {}
+        with self.writer.as_default():
+            # 🔹 Log Weight Histograms
+            for weight in self.model.trainable_weights:
+                tf.summary.histogram(weight.name, weight.numpy(), step=epoch)
+
+            # 🔹 Compute & Log Gradients using `GradientTape`
+            if self.validation_data is not None:
+                X_val, y_val = self.validation_data  # Unpack validation data
+                with tf.GradientTape() as tape:
+                    predictions = self.model(X_val, training=True)
+                    loss_value = self.model.loss(y_val, predictions)  # Use validation data
+                gradients = tape.gradient(loss_value, self.model.trainable_weights)
+
+                for grad, weight in zip(gradients, self.model.trainable_weights):
+                    if grad is not None:
+                        tf.summary.histogram(f'gradient/{weight.name}', grad.numpy(), step=epoch)
+
+            # 🔹 Log Learning Rate
+            tf.summary.scalar("learning_rate", self.model.optimizer.learning_rate.numpy(), step=epoch)
+
+        self.writer.flush()
+
+
+class MetricsLogger(tf.keras.callbacks.Callback):
+    def __init__(self, log_path):
+        super().__init__()
+        self.log_path = log_path
+        self.epoch_data = []
+
+    def on_epoch_end(self, epoch, logs=None):
+        logs = logs or {}
+        lr = float(tf.keras.backend.get_value(self.model.optimizer.learning_rate))
+        training_loss = logs.get('loss', None)
+        validation_loss = logs.get('val_loss', None)
+        loss_diff = None
+        if training_loss is not None and validation_loss is not None:
+            loss_diff = training_loss - validation_loss
+        self.epoch_data.append({
+            'Epoch': epoch + 1,
+            'Learning Rate': lr,
+            'Training Loss': training_loss,
+            'Validation Loss': validation_loss,
+            'Loss Difference': loss_diff
+        })
+
+    def on_train_end(self, logs=None):
+        df = pd.DataFrame(self.epoch_data)
+        df.to_csv(self.log_path, index=False)
+        print(f"Custom metrics log saved to {self.log_path}")
+
+
+# 🔹 Compute Differences Between Consecutive Voltage Values (X data)
+def compute_differences(X):
+    # Compute the differences between consecutive points
+    diffs = np.diff(X, axis=1)
+    
+    # Compute the error bars (absolute differences between consecutive points)
+    error_bars = np.hstack([np.zeros((X.shape[0], 1)), np.abs(diffs)])
+    
+    # Set the first point to 0 for the differences
+    differences = np.hstack([np.zeros((X.shape[0], 1)), diffs])
+    
+    return differences, error_bars
+
+
+x = np.array([1, 2, 4, 7, 0])
+print(np.diff(x, axis=0))
