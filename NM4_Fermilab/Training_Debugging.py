@@ -117,7 +117,7 @@ class CustomMetricsLogger(tf.keras.callbacks.Callback):
 
 
 data = pd.read_csv(data_path)
-sampled_data = data.sample(n=50000, random_state=42)  # Use random_state for reproducibility
+sampled_data = data.sample(n=50000, random_state=42) 
 
 val_fraction = 0.2
 test_fraction = 0.1

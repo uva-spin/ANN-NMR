@@ -10,7 +10,8 @@ from sklearn.preprocessing import StandardScaler  # Changed from MinMaxScaler
 import matplotlib.pyplot as plt
 from datetime import datetime
 from Misc_Functions import *
-# Configure environment for maximum performance
+
+
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['TF_XLA_FLAGS'] = '--tf_xla_enable_xla_devices'
 os.environ['TF_XLA_FLAGS'] = '--tf_xla_auto_jit=2'
@@ -38,7 +39,6 @@ os.makedirs(model_dir, exist_ok=True)
 def swish(x):
     return tf.nn.silu(x)
 
-# Optimized Model Architecture
 def residual_block(x, units, block_id):
     shortcut = x
     x = layers.Dense(units, activation=swish,
@@ -56,7 +56,7 @@ def residual_block(x, units, block_id):
     return x
 
 def Polarization(input_dim):
-    # Load pre-trained base model (10-80% range)
+
     base_model = tf.keras.models.load_model(
         '/home/devin/Documents/ANN-NMR/NM4_Fermilab/Models/Deuteron_10_80_ResNet_V6/best_model.keras',
         custom_objects={
@@ -69,14 +69,12 @@ def Polarization(input_dim):
     for layer in base_model.layers[:-4]:
         layer.trainable = False
         
-    # Get base model outputs
     x = base_model.layers[-5].output  # Get layer before final blocks
     
     # Add new residual blocks for low-range specificity
     x = residual_block(x, 128, block_id="low_range_1")
     x = residual_block(x, 64, block_id="low_range_2")
     
-    # Enhanced output scaling
     outputs = layers.Dense(1, activation='sigmoid',
                           kernel_initializer=initializers.RandomNormal(stddev=1e-4),
                           name="output_dense")(x)
@@ -84,7 +82,6 @@ def Polarization(input_dim):
     
     model = tf.keras.Model(inputs=base_model.input, outputs=outputs)
     
-    # Hybrid optimizer configuration
     optimizer = optimizers.Adam(
         learning_rate=1e-5,  # Lower initial LR for fine-tuning
         weight_decay=1e-4,
@@ -98,22 +95,6 @@ def Polarization(input_dim):
     )
     return model
 
-# Custom Loss Functions
-def log_cosh_precision_loss(y_true, y_pred):
-    """Hybrid loss combining log-cosh and precision weighting"""
-    error = y_true - y_pred
-    precision_weights = tf.math.exp(-10.0 * y_true) + 1e-6  # Higher weight near zero
-    return tf.reduce_mean(precision_weights * tf.math.log(cosh(error)))
-
-def cosh(x):
-    return (tf.math.exp(x) + tf.math.exp(-x)) / 2
-
-def adaptive_loss(y_true, y_pred):
-    error = y_true - y_pred
-    low_weights = tf.exp(-tf.square(y_true - 0.0005)/(2 * 0.0002**2))  # 0.05% focus
-    mid_weights = tf.clip_by_value(y_true/0.8, 0.1, 1.0)  # Maintain high-range accuracy
-    return tf.reduce_mean((low_weights + mid_weights) * tf.math.log(cosh(error)))
-
 # Data Preparation
 print("Getting data...")
 data = pd.read_csv(data_path)
@@ -123,7 +104,6 @@ data = data.query("0.0 <= P <= 0.8").sample(frac=1, random_state=42)
 train_data, temp_data = train_test_split(data, test_size=0.3, random_state=42)
 val_data, test_data = train_test_split(temp_data, test_size=1/3, random_state=42)
 
-# Feature/target separation
 X_train = train_data.drop(columns=["P", 'SNR']).values
 y_train = train_data["P"].values
 X_val = val_data.drop(columns=["P", 'SNR']).values
@@ -131,7 +111,6 @@ y_val = val_data["P"].values
 X_test = test_data.drop(columns=["P", 'SNR']).values
 y_test = test_data["P"].values
 
-# Data Preprocessing
 scaler = StandardScaler().fit(X_train)
 X_train = scaler.transform(X_train)
 X_val = scaler.transform(X_val)
@@ -144,7 +123,6 @@ callbacks_list = [
     tf.keras.callbacks.TerminateOnNaN()
 ]
 
-# Dynamic sample weighting
 def create_weights(y):
     # Focus weights: 0-0.1% gets 5x weight, 0.1-1% 3x, others 1x
     weights = np.ones_like(y)
@@ -189,11 +167,9 @@ history2 = model.fit(
     verbose=2
 )
 
-# Post-processing and Evaluation
 y_test_pred = model.predict(X_test).flatten()
 residuals = y_test - y_test_pred
 
-# Save results with high precision
 test_results_df = pd.DataFrame({
     'Actual': y_test.round(6),
     'Predicted': y_test_pred.round(6),

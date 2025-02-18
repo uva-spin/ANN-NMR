@@ -16,38 +16,34 @@ import random
 random.seed(42)
 
 
-# Configure environment for maximum performance
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['TF_XLA_FLAGS'] = '--tf_xla_enable_xla_devices'
 os.environ['TF_XLA_FLAGS'] = '--tf_xla_auto_jit=2'
 tf.config.optimizer.set_jit(True)
 tf.keras.mixed_precision.set_global_policy('mixed_float16')
 
-# GPU Configuration
 physical_devices = tf.config.list_physical_devices('GPU')
 if physical_devices:
     tf.config.experimental.set_memory_growth(physical_devices[0], True)
     print(f"Using GPU: {physical_devices[0]}")
 
-# Precision Configuration
 tf.keras.backend.set_floatx('float64')
 
 # File paths and versioning
 data_path = find_file("Deuteron_0_10_No_Noise_500K.csv")  
-version = 'Deuteron_0_10_ResNet_V10'  # Updated version
+version = 'Deuteron_0_10_ResNet_V10'  
 performance_dir = f"Model Performance/{version}"  
 model_dir = f"Models/{version}"  
 os.makedirs(performance_dir, exist_ok=True)
 os.makedirs(model_dir, exist_ok=True)
 
-# 🔹 Residual Block with L1 & L2 Regularization for Precision
 def residual_block(x, units, dropout_rate=0.2, l1=1e-5, l2=1e-4):
     shortcut = x
     x = layers.Dense(units, activation='swish', 
                      kernel_initializer='he_normal', 
                      kernel_regularizer=regularizers.l1_l2(l1=l1, l2=l2), 
                      dtype='float64')(x)
-    x = layers.LayerNormalization()(x)  # 🔹 LayerNorm for numerical stability
+    x = layers.LayerNormalization()(x)  
     x = layers.Dropout(dropout_rate)(x)
     
     if shortcut.shape[-1] != units:
@@ -59,22 +55,21 @@ def residual_block(x, units, dropout_rate=0.2, l1=1e-5, l2=1e-4):
     
     return layers.Add()([shortcut, x])
 
-# 🔹 Model Definition with L1 & L2 Regularization
 def Polarization():
     inputs = layers.Input(shape=(500,), dtype='float64')
 
-    x = layers.LayerNormalization()(inputs)  # 🔹 Normalize input for better precision
+    x = layers.LayerNormalization()(inputs) 
 
     units = [64, 32]
     for u in units:
         x = residual_block(x, u, dropout_rate=0.2, l1=1e-5, l2=1e-4)
 
-    x = layers.Dropout(0.1)(x)  # 🔹 Monte Carlo Dropout for uncertainty tracking
+    x = layers.Dropout(0.1)(x) 
 
     outputs = layers.Dense(1, 
                 activation='linear',  
                 kernel_initializer=initializers.HeNormal(),
-                kernel_regularizer=regularizers.l1_l2(l1=1e-5, l2=1e-4),  # 🔹 Apply L1 & L2 to output layer
+                kernel_regularizer=regularizers.l1_l2(l1=1e-5, l2=1e-4),  
                 dtype='float64')(x)
 
     model = tf.keras.Model(inputs=inputs, outputs=outputs)
@@ -82,7 +77,7 @@ def Polarization():
     optimizer = optimizers.AdamW(
         learning_rate=0.0001, 
         weight_decay=1e-3, 
-        epsilon=1e-6,  # 🔹 Smaller epsilon for precise updates
+        epsilon=1e-6,  
         clipnorm=0.1,  
     )
 
@@ -95,15 +90,12 @@ def Polarization():
     return model
 
 
-# 🔹 Load Data
 print("Loading data...")
 data = pd.read_csv(data_path)
 
-# 🔹 Split Data
 train_data, temp_data = train_test_split(data, test_size=0.3, random_state=42)
 val_data, test_data = train_test_split(temp_data, test_size=1/3, random_state=42)
 
-# 🔹 Feature/Target Separation
 X_train = train_data.drop(columns=["P", 'SNR']).astype('float64').values
 y_train = train_data["P"].astype('float64').values
 X_val = val_data.drop(columns=["P", 'SNR']).astype('float64').values
@@ -111,13 +103,12 @@ y_val = val_data["P"].astype('float64').values
 X_test = test_data.drop(columns=["P", 'SNR']).astype('float64').values
 y_test = test_data["P"].astype('float64').values
 
-# 🔹 Normalize Data
+# Normalize Data
 scaler = StandardScaler().fit(X_train)
 X_train = scaler.transform(X_train).astype('float64')
 X_val = scaler.transform(X_val).astype('float64')
 X_test = scaler.transform(X_test).astype('float64')
 
-# 🔹 Callbacks for Monitoring & Training Stability
 tensorboard_callback = CustomTensorBoard(log_dir='./logs')
 early_stopping = tf.keras.callbacks.EarlyStopping(
     monitor='val_mae',  
@@ -137,23 +128,21 @@ callbacks_list = [
     tf.keras.callbacks.CSVLogger(os.path.join(performance_dir, 'training_log.csv'))
 ]
 
-# 🔹 Train Model
+# Train Model
 model = Polarization()
 history = model.fit(
     X_train, y_train,
     validation_data=(X_val, y_val),
     epochs=1000,
-    batch_size=256,  # 🔹 Increased batch size for GPU
+    batch_size=256,  
     callbacks=callbacks_list,
     verbose=2
 )
 
 # Post-processing and Evaluation
 y_test_pred = model.predict(X_test).flatten()
-# y_test_pred = np.expm1(model.predict(X_test))  # Inverse transform
 residuals = y_test - y_test_pred
 
-# Save results with high precision
 test_results_df = pd.DataFrame({
     'Actual': y_test.round(6),
     'Predicted': y_test_pred.round(6),

@@ -8,7 +8,6 @@ g = 0.05
 s = 0.04
 bigy = (3 - s)**0.5
 
-# Define the GenerateLineshape function
 def GenerateLineshape(P, x):
     def cosal(x, eps):
         return (1 - eps * x - s) / bigxsquare(x, eps)
@@ -44,18 +43,16 @@ def GenerateLineshape(P, x):
     return signal, Iplus, Iminus
 
 # Parameters
-n = 10000  # Length of the signal
-num_bins = 500  # Number of frequency bins
-data_min = -3  # Minimum value of the data range
-data_max = 3  # Maximum value of the data range
-polarization_values = np.linspace(0.001, .8, 100)  # Polarization range from 0 to 1
+n = 10000  
+num_bins = 500  
+data_min = -3  
+data_max = 3 
+polarization_values = np.linspace(0.001, .8, 100)  
 
-# Step 1: Generate continuous data and bin it for each polarization value
-x_values = np.linspace(data_min, data_max, n)  # Generate n points in the range [-3, 3]
+x_values = np.linspace(data_min, data_max, n) 
 bin_edges = np.linspace(data_min, data_max, num_bins + 1)  # Bin edges
 bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2  # Compute bin centers for plotting
 
-# Initialize arrays to store binned errors for each polarization
 binned_errors = np.zeros((len(polarization_values), num_bins))
 
 # Loop over polarization values
@@ -72,14 +69,12 @@ for idx, P in enumerate(polarization_values):
         if np.any(mask):
             binned_errors[idx, i] = np.std(signal[mask])  # Standard deviation as error
 
-# Step 2: Normalize the error between 0 and 1
+# Normalize the error between 0 and 1
 min_error = np.min(binned_errors)
 max_error = np.max(binned_errors)
 normalized_errors = (binned_errors - min_error) / (max_error - min_error)
 
-# Step 3: Plot the normalized error as a function of polarization and frequency bins
 
-# Set a dark background for the plots
 # plt.style.use('dark_background')
 
 # 2D Heatmap

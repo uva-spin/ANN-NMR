@@ -1,15 +1,12 @@
 #!/usr/bin/env bash
-#SBATCH -p standard
 #SBATCH --output=result_%a.out
 #SBATCH --error=result_%a.err
-#SBATCH -c 16
-#SBATCH -t 24:00:00
+#SBATCH --partition=gpu
+#SBATCH --gres=gpu:1
+#SBATCH --mem=32G
+#SBATCH -t 6:00:00
 #SBATCH -A spinquest_standard
 
-module purge
-module load anaconda
-source activate tf-2.7
-conda install scikit-learn
-export LD_LIBRARY_PATH=~/.conda/envs/tf-2.7/lib:$LD_LIBRARY_PATH
-
-python Training.py $1
+module load miniforge/24.3.0-py3.11
+module load apptainer tensorflow/2.17.0
+apptainer run --nv $CONTAINERDIR/tensorflow-2.17.0.sif Training.py

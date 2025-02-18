@@ -50,7 +50,7 @@ def residual_block(x, units, dropout_rate=0.2, l1=1e-5, l2=1e-4, activation='swi
                      kernel_initializer='he_normal', 
                      kernel_regularizer=regularizers.l1_l2(l1=l1, l2=l2), 
                      dtype='float64')(x)
-    x = layers.LayerNormalization()(x)  # 🔹 LayerNorm for numerical stability
+    x = layers.LayerNormalization()(x) 
     x = layers.Dropout(dropout_rate)(x)
     
     if shortcut.shape[-1] != units:
@@ -67,7 +67,6 @@ class PolarizationHyperModel(kt.HyperModel):
         inputs = layers.Input(shape=(500,), dtype='float64')
         x = layers.LayerNormalization()(inputs)
 
-        # Tunable hyperparameters
         num_layers = hp.Choice('num_layers', values=[2, 3, 4, 6, 8])  # Number of layers
         units_per_layer = hp.Choice('units_per_layer', values=[64, 128, 256])  # Units per layer
         dropout_rate = hp.Float('dropout_rate', min_value=0.0, max_value=0.8, step=0.1)
@@ -75,7 +74,6 @@ class PolarizationHyperModel(kt.HyperModel):
         l2 = hp.Choice('l2', values=[1e-4, 1e-3])
         learning_rate = hp.Choice('learning_rate', values=[0.0001, 0.001])
 
-        # Loss function choice
         loss_function_choice = hp.Choice('loss_function', values=['logcosh', 'mse', 'mae'])  # Loss function choice
         if loss_function_choice == 'logcosh':
             loss_function = tf.keras.losses.LogCosh()
@@ -84,7 +82,6 @@ class PolarizationHyperModel(kt.HyperModel):
         elif loss_function_choice == 'mae':
             loss_function = tf.keras.losses.MeanAbsoluteError()
 
-        # Create the layers based on num_layers and units_per_layer
         for _ in range(num_layers):
             x = residual_block(x, units_per_layer, dropout_rate=dropout_rate, l1=l1, l2=l2)
 
@@ -93,7 +90,7 @@ class PolarizationHyperModel(kt.HyperModel):
         outputs = layers.Dense(1, 
                     activation='linear',  
                     kernel_initializer=initializers.HeNormal(),
-                    kernel_regularizer=regularizers.l1_l2(l1=l1, l2=l2),  # 🔹 Apply L1 & L2 to output layer
+                    kernel_regularizer=regularizers.l1_l2(l1=l1, l2=l2),  
                     dtype='float64')(x)
 
         model = tf.keras.Model(inputs=inputs, outputs=outputs)
@@ -101,14 +98,13 @@ class PolarizationHyperModel(kt.HyperModel):
         optimizer = optimizers.AdamW(
             learning_rate=learning_rate, 
             weight_decay=1e-3, 
-            epsilon=1e-6,  # 🔹 Smaller epsilon for precise updates
+            epsilon=1e-6,  
             clipnorm=0.1,  
         )
 
-        # Compile the model with the chosen loss function
         model.compile(
             optimizer=optimizer,
-            loss=loss_function,  # Loss function set here
+            loss=loss_function,  
             metrics=[relative_percent_error, tf.keras.metrics.MeanAbsoluteError(name='mae')]
         )
 
@@ -118,18 +114,16 @@ class PolarizationHyperModel(kt.HyperModel):
 
 
     def fit(self, hp, model, *args, **kwargs):
-        trial = kwargs.get('trial', None)  # Get the trial object from kwargs
+        trial = kwargs.get('trial', None) 
         
         # If no trial found, fallback to creating a default trial ID (e.g., timestamp)
         trial_number = trial.trial_id if trial is not None else str(int(time.time() * 1000))  # Timestamp in milliseconds
         
-        # Generate log directory path with unique trial number
         log_dir = f'./logs/trial_{trial_number}'
 
         # Remove 'callbacks' from kwargs to avoid duplication
         callbacks = kwargs.pop('callbacks', [])
 
-        # Append the custom callbacks
         callbacks.extend([
             tf.keras.callbacks.EarlyStopping(monitor='val_mae', patience=10, restore_best_weights=True),
             tf.keras.callbacks.ReduceLROnPlateau(monitor='val_mae', factor=0.5, patience=15, min_lr=1e-7),
@@ -141,20 +135,17 @@ class PolarizationHyperModel(kt.HyperModel):
             *args,
             batch_size=256,
             epochs=100,
-            callbacks=callbacks,  # Pass the final list of callbacks
+            callbacks=callbacks, 
             **kwargs
     )
 
 
-# 🔹 Load Data
 print("Loading data...")
 data = pd.read_csv(data_path)
 
-# 🔹 Split Data
 train_data, temp_data = train_test_split(data, test_size=0.3, random_state=42)
 val_data, test_data = train_test_split(temp_data, test_size=1/3, random_state=42)
 
-# 🔹 Feature/Target Separation
 X_train = train_data.drop(columns=["P", 'SNR']).astype('float64').values
 y_train = train_data["P"].astype('float64').values
 X_val = val_data.drop(columns=["P", 'SNR']).astype('float64').values
@@ -166,8 +157,7 @@ X_train_diffs, X_train_err = compute_differences(X_train)
 X_val, X_train_err = compute_differences(X_val)
 X_test, X_test_errr = compute_differences(X_test)
 
-# 🔹 Plot the first row of X_train (just for visualization)
-y_values = np.zeros_like(X_train[0])  # Alternatively, use `None`
+y_values = np.zeros_like(X_train[0]) 
 x_values = np.linspace(212, 214, 500)
 plt.errorbar(x_values, y_values, yerr=X_train_err[0], capsize=5, label='Differences with Error Bars', linestyle = 'none')
 plt.xlabel('Frequency Bin')
@@ -176,13 +166,11 @@ plt.title('Voltage Differences with Error Bars')
 plt.legend()
 plt.show()
 
-# 🔹 Normalize Data
 scaler = StandardScaler().fit(X_train)
 X_train = scaler.transform(X_train).astype('float64')
 X_val = scaler.transform(X_val).astype('float64')
 X_test = scaler.transform(X_test).astype('float64')
 
-# 🔹 Plot the first row of X_train (just for visualization)
 plt.figure(figsize=(10, 6))
 plt.plot(x_values, X_train[0], label='Transformed Data (1st Row)', color='b')
 plt.title('Transformed Data (First Row)', fontsize=14)
@@ -193,7 +181,6 @@ plt.legend()
 plt.show()
 
 
-# 🔹 Set Up Keras Tuner
 tuner = kt.GridSearch(
     PolarizationHyperModel(),
     objective='val_mae',
@@ -204,17 +191,17 @@ tuner = kt.GridSearch(
     max_trials=5
 )
 
-# 🔹 Perform Hyperparameter Search
+# Perform Hyperparameter Search
 tuner.search(
     X_train, y_train,
     validation_data=(X_val, y_val),
     verbose=2
 )
 
-# 🔹 Get All Trials
+# Get All Trials
 trials = tuner.oracle.get_best_trials(num_trials=len(tuner.oracle.trials))
 
-# 🔹 Store Results for Each Trial
+# Store Results for Each Trial
 all_histories = []
 all_residuals = []
 all_weights = []
@@ -234,15 +221,13 @@ for trial in trials:
     )
     all_histories.append(history.history)
     
-    # Evaluate model
     y_test_pred = model.predict(X_test).flatten()
     residuals = y_test - y_test_pred
     all_residuals.append(residuals)
     
-    # Save weights
     all_weights.append(model.get_weights())
 
-# 🔹 Plot Overlayed Loss vs. Epoch
+# Plot Overlayed Loss vs. Epoch
 plt.figure(figsize=(10, 6))
 for i, history in enumerate(all_histories):
     plt.plot(history['loss'], label=f'Trial {i} Training Loss')
@@ -256,7 +241,7 @@ plt.tight_layout()
 plt.savefig('./keras_tuner/loss_overlay.png', dpi=600)
 plt.close()
 
-# 🔹 Plot Overlayed Histograms of Residuals
+# Plot Overlayed Histograms of Residuals
 plt.figure(figsize=(10, 6))
 for i, residuals in enumerate(all_residuals):
     plt.hist(residuals * 100, bins=50, alpha=0.5, label=f'Trial {i}')
@@ -269,7 +254,7 @@ plt.tight_layout()
 plt.savefig('./keras_tuner/residuals_overlay.png', dpi=600)
 plt.close()
 
-# 🔹 Plot Overlayed Weights
+# Plot Overlayed Weights
 plt.figure(figsize=(10, 6))
 for i, weights in enumerate(all_weights):
     flattened_weights = np.concatenate([w.flatten() for w in weights])
