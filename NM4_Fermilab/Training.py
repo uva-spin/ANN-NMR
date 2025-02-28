@@ -57,36 +57,33 @@ def residual_block(x, units, dropout_rate=0.2, l1=1e-5, l2=1e-4):
 
 def Polarization():
     inputs = layers.Input(shape=(500,), dtype='float64')
-
-    x = layers.LayerNormalization()(inputs) 
-
-    units = [64, 32]
+    
+    # Initial normalization
+    x = layers.LayerNormalization()(inputs)
+    
+    # Consider a deeper network with more blocks if needed
+    units = [128, 64, 32]  # Added one more layer
     for u in units:
         x = residual_block(x, u, dropout_rate=0.2, l1=1e-5, l2=1e-4)
-
-    x = layers.Dropout(0.1)(x) 
-
+    
+    x = layers.Dropout(0.1)(x)
+    
     outputs = layers.Dense(1, 
-                activation='linear',  
+                activation='linear',
                 kernel_initializer=initializers.HeNormal(),
-                kernel_regularizer=regularizers.l1_l2(l1=1e-5, l2=1e-4),  
+                kernel_regularizer=regularizers.l1_l2(l1=1e-5, l2=1e-4),
                 dtype='float64')(x)
-
+    
     model = tf.keras.Model(inputs=inputs, outputs=outputs)
-
+    
+    # Consider using Lookahead wrapper from your Misc_Functions
     optimizer = optimizers.AdamW(
-        learning_rate=0.0001, 
-        weight_decay=1e-3, 
-        epsilon=1e-6,  
-        clipnorm=0.1,  
+        learning_rate=0.0001,
+        weight_decay=1e-3,
+        epsilon=1e-6,
+        clipnorm=0.1,
     )
-
-    model.compile(
-        optimizer=optimizer,
-        loss=tf.keras.losses.LogCosh(),
-        metrics=[relative_percent_error,tf.keras.metrics.MeanAbsoluteError(name='mae')]
-    )
-
+    
     return model
 
 
@@ -118,12 +115,21 @@ early_stopping = tf.keras.callbacks.EarlyStopping(
     restore_best_weights=True  
 )
 
+# Consider a custom learning rate schedule
+def cosine_decay_with_warmup(epoch, lr):
+    warmup_epochs = 5
+    total_epochs = 1000
+    if epoch < warmup_epochs:
+        return lr * (epoch + 1) / warmup_epochs
+    else:
+        return lr * 0.5 * (1 + np.cos(np.pi * (epoch - warmup_epochs) / (total_epochs - warmup_epochs)))
+
 callbacks_list = [
     early_stopping,
     tf.keras.callbacks.ModelCheckpoint(os.path.join(model_dir, 'best_model.keras'),
                    monitor='val_mae',
                    save_best_only=True),
-    tf.keras.callbacks.ReduceLROnPlateau(monitor='val_mae', factor=0.5, patience=15, min_lr=1e-7),
+    tf.keras.callbacks.LearningRateScheduler(cosine_decay_with_warmup),
     tensorboard_callback,
     tf.keras.callbacks.CSVLogger(os.path.join(performance_dir, 'training_log.csv'))
 ]
@@ -237,3 +243,46 @@ output_path = os.path.join(performance_dir, f'{version}_Histograms.png')
 fig.savefig(output_path,dpi=600)
 
 print(f"Histograms plotted in {output_path}!")
+
+def binning_loss(y_true, y_pred, bins=10, bin_range=(0, 0.1)):
+    """
+    Custom loss function to compute binning error for a given y value (P).
+    
+    Parameters:
+    -----------
+    y_true : tensor
+        True values (ground truth).
+    y_pred : tensor
+        Predicted values.
+    bins : int
+        Number of bins to create.
+    bin_range : tuple
+        Range of values to consider for binning (min, max).
+    
+    Returns:
+    --------
+    tensor
+        Computed binning loss.
+    """
+    # Create bins
+    bin_edges = tf.linspace(bin_range[0], bin_range[1], bins + 1)
+    
+    # Digitize the true and predicted values into bins
+    true_bins = tf.digitize(y_true, bin_edges) - 1  # -1 to make it zero-indexed
+    pred_bins = tf.digitize(y_pred, bin_edges) - 1
+    
+    # Calculate the bin counts
+    true_counts = tf.math.bincount(true_bins, minlength=bins)
+    pred_counts = tf.math.bincount(pred_bins, minlength=bins)
+    
+    # Calculate the binning error as the mean squared error between true and predicted counts
+    binning_error = tf.reduce_mean(tf.square(true_counts - pred_counts))
+    
+    return binning_error
+
+# Example of how to use the custom loss function in model compilation
+model.compile(
+    optimizer=optimizer,
+    loss=binning_loss,
+    metrics=[tf.keras.metrics.MeanAbsoluteError(name='mae')]
+)

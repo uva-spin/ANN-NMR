@@ -42,7 +42,6 @@ def GenerateLineshape(P, x):
     signal = Iplus + Iminus
     return signal, Iplus, Iminus
 
-# Parameters
 n = 10000  
 num_bins = 500  
 data_min = -3  
@@ -55,21 +54,19 @@ bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2  # Compute bin centers for pl
 
 binned_errors = np.zeros((len(polarization_values), num_bins))
 
-# Loop over polarization values
 for idx, P in enumerate(polarization_values):
     signal, Iplus, Iminus = GenerateLineshape(P, x_values)
     
     # Bin the data
-    bin_indices = np.digitize(x_values, bin_edges) - 1  # Assign data to bins (zero-based indexing)
-    bin_indices = np.clip(bin_indices, 0, num_bins - 1)  # Clip to valid indices
+    bin_indices = np.digitize(x_values, bin_edges) - 1
+    bin_indices = np.clip(bin_indices, 0, num_bins - 1)  
     
-    # Compute binned errors
     for i in range(num_bins):
         mask = (bin_indices == i)
         if np.any(mask):
-            binned_errors[idx, i] = np.std(signal[mask])  # Standard deviation as error
+            binned_errors[idx, i] = np.std(signal[mask])  
 
-# Normalize the error between 0 and 1
+# Normalize the error
 min_error = np.min(binned_errors)
 max_error = np.max(binned_errors)
 normalized_errors = (binned_errors - min_error) / (max_error - min_error)
