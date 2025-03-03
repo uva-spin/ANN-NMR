@@ -30,8 +30,8 @@ if physical_devices:
 tf.keras.backend.set_floatx('float64')
 
 # File paths and versioning
-data_path = find_file("Deuteron_0_10_No_Noise_500K.csv")  
-version = 'Deuteron_0_10_ResNet_V10'  
+data_path = find_file("Deuteron_Low_No_Noise_500K.csv")  
+version = 'Deuteron_Low_ResNet_V11_Weighted_Binning_Error'  
 performance_dir = f"Model Performance/{version}"  
 model_dir = f"Models/{version}"  
 os.makedirs(performance_dir, exist_ok=True)
@@ -76,13 +76,22 @@ def Polarization():
     
     model = tf.keras.Model(inputs=inputs, outputs=outputs)
     
-    # Consider using Lookahead wrapper from your Misc_Functions
+        # Consider using Lookahead wrapper from your Misc_Functions
     optimizer = optimizers.AdamW(
         learning_rate=0.0001,
         weight_decay=1e-3,
         epsilon=1e-6,
         clipnorm=0.1,
     )
+
+    model.compile(
+        optimizer=optimizer,
+        loss=loss_function,
+        metrics=[
+            tf.keras.metrics.MeanAbsoluteError(name='mae'),
+            tf.keras.metrics.RootMeanSquaredError(name='rmse')
+        ]
+)
     
     return model
 
@@ -105,6 +114,10 @@ scaler = StandardScaler().fit(X_train)
 X_train = scaler.transform(X_train).astype('float64')
 X_val = scaler.transform(X_val).astype('float64')
 X_test = scaler.transform(X_test).astype('float64')
+
+feature_space_train = tf.convert_to_tensor(X_train, dtype=tf.float32)
+feature_space_val = tf.convert_to_tensor(X_val, dtype=tf.float32)
+feature_space_test = tf.convert_to_tensor(X_test, dtype=tf.float32)
 
 tensorboard_callback = CustomTensorBoard(log_dir='./logs')
 early_stopping = tf.keras.callbacks.EarlyStopping(
@@ -136,9 +149,11 @@ callbacks_list = [
 
 # Train Model
 model = Polarization()
+
+    
 history = model.fit(
-    X_train, y_train,
-    validation_data=(X_val, y_val),
+    feature_space_train, y_train,
+    validation_data=(feature_space_val, y_val),
     epochs=1000,
     batch_size=256,  
     callbacks=callbacks_list,
@@ -146,7 +161,7 @@ history = model.fit(
 )
 
 # Post-processing and Evaluation
-y_test_pred = model.predict(X_test).flatten()
+y_test_pred = model.predict(feature_space_test).flatten()
 residuals = y_test - y_test_pred
 
 test_results_df = pd.DataFrame({

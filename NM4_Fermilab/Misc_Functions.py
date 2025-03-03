@@ -434,6 +434,91 @@ def compute_differences(X):
     
     return differences, error_bars
 
+def weighted_mse(y_true, y_pred):
+    # Calculate squared error
+    mse = tf.square(y_true - y_pred)
+    
+    # Create stronger weights for values around 0.0005 (0.05%)
+    # Gaussian-like weighting centered at 0.0005
+    center_weight = tf.exp(-200.0 * tf.square(y_true - 0.0005)) * 10.0
+    
+    # General weighting for small values
+    small_value_weight = tf.exp(-5.0 * y_true) + 1.0
+    
+    # Combine weights
+    weights = small_value_weight + center_weight
+    
+    # Apply weights to the loss
+    weighted_loss = mse * weights
+    
+    return tf.reduce_mean(weighted_loss)
 
-x = np.array([1, 2, 4, 7, 0])
-print(np.diff(x, axis=0))
+def Binning_Errors(y_true, y_pred, feature_space, bins=500, bin_range=(-3, 3)):
+    """
+    Custom loss function that divides each feature space neuron by its respective binning error.
+    
+    Parameters:
+    -----------
+    y_true : tensor
+        True values (ground truth).
+    y_pred : tensor
+        Predicted values.
+    feature_space : tensor
+        The feature space (input features).
+    bins : int
+        Number of bins to create.
+    bin_range : tuple
+        Range of values to consider for binning (min, max).
+    
+    Returns:
+    --------
+    tensor
+        Computed loss value.
+    """
+    # Initialize binned errors
+    
+    n = 10000  
+    num_bins = 500  
+    data_min = -3  
+    data_max = 3 
+    
+    x_values = np.linspace(data_min, data_max, n) 
+    bin_edges = np.linspace(data_min, data_max, num_bins + 1)  # Bin edges
+    bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2  # Compute bin centers for plotting
+    
+    y_true = y_true.numpy()
+
+    binned_errors = np.zeros((len(y_true), num_bins))
+    
+    # Loop through each true value to generate the corresponding signal
+    for i in range(len(y_true)):
+        P = y_true[i]  # Get the true value for this sample
+        # x_values = feature_space.numpy()  # Get the corresponding feature space for this sample
+        
+        # Generate the signal using the GenerateLineshape function
+        signal, _, _ = GenerateLineshape(P, x_values)
+        
+        # Create bins
+        bin_edges = np.linspace(bin_range[0], bin_range[1], bins + 1)
+        
+        # Digitize the generated signal into bins
+        bin_indices = np.digitize(signal, bin_edges) - 1  # -1 to make it zero-indexed
+        bin_indices = np.clip(bin_indices, 0, bins - 1)  # Clip to valid indices
+        
+        # Calculate the bin counts (standard deviation as error)
+        for j in range(bins):
+            mask = (bin_indices == j)
+            if np.any(mask):
+                binned_errors[i, j] = np.std(signal[mask])  # Standard deviation as error
+
+    # Normalize the errors
+    min_error = np.min(binned_errors)
+    max_error = np.max(binned_errors)
+    normalized_errors = (binned_errors - min_error) / (max_error - min_error + 1e-8)  # Avoid division by zero
+
+    # Calculate the loss by dividing each predicted value by its corresponding binning error
+    loss = tf.reduce_mean(tf.square(y_pred / normalized_errors))
+
+    return loss
+
+

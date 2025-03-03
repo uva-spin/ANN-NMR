@@ -17,6 +17,8 @@ from RPE_Histograms import analyze_model_errors
 from sklearn.experimental import enable_hist_gradient_boosting  # noqa
 from sklearn.ensemble import HistGradientBoostingRegressor
 from xgboost import XGBRegressor
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense
 
 ### Let's set a specific seed for reproducibility
 random.seed(42)
@@ -179,3 +181,13 @@ plt.grid()
 
 plt.savefig(os.path.join(performance_dir, 'relative_percent_error_vs_polarization_combined.png'))
 plt.close()  
+
+def build_simple_model():
+    model = Sequential()
+    model.add(Dense(32, activation='relu', input_shape=(input_shape,)))
+    model.add(Dense(1, activation='sigmoid'))
+    
+    # Compile the model here
+    model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+    
+    return model  
