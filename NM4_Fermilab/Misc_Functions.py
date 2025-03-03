@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 from scipy.stats import norm
 import tensorflow as tf
 from tensorflow.keras.layers import Layer
+from Lineshape import *
 
 
 def choose_random_row(csv_file):
@@ -520,5 +521,44 @@ def Binning_Errors(y_true, y_pred, feature_space, bins=500, bin_range=(-3, 3)):
     loss = tf.reduce_mean(tf.square(y_pred / normalized_errors))
 
     return loss
+
+
+def calculate_binned_errors(P, n, num_bins=500, data_min=-3, data_max=3):
+    """
+    Calculate binned errors for a single polarization level.
+
+    Parameters:
+    - P: Polarization level.
+    - n: Number of data points to generate.
+    - num_bins: Number of bins for binning the data.
+    - data_min: Minimum value for x_values.
+    - data_max: Maximum value for x_values.
+
+    Returns:
+    - bin_centers: The centers of the bins.
+    - binned_errors: The standard deviation of the signal in each bin.
+    """
+    # Generate x_values and bin edges
+    x_values = np.linspace(data_min, data_max, n)
+    bin_edges = np.linspace(data_min, data_max, num_bins + 1)  # Bin edges
+    bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2  # Compute bin centers for plotting
+
+    # Generate the signal using GenerateLineshape
+    signal, Iplus, Iminus = GenerateLineshape(P, x_values)
+
+    # Bin the data
+    bin_indices = np.digitize(x_values, bin_edges) - 1
+    bin_indices = np.clip(bin_indices, 0, num_bins - 1)  
+
+    # Initialize binned errors array
+    binned_errors = np.zeros(num_bins)
+
+    # Calculate the standard deviation for each bin
+    for i in range(num_bins):
+        mask = (bin_indices == i)
+        if np.any(mask):
+            binned_errors[i] = np.std(signal[mask])  
+
+    return bin_centers, binned_errors
 
 
