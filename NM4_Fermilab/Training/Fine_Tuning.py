@@ -9,7 +9,10 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler  # Changed from MinMaxScaler
 import matplotlib.pyplot as plt
 from datetime import datetime
-from Misc_Functions import *
+from Custom_Scripts.Misc_Functions import *
+from Custom_Scripts.Loss_Functions import *
+from Custom_Scripts.Lineshape import *
+from Plotting.Plot_Script import *
 
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'

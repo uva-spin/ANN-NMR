@@ -326,6 +326,8 @@ def GenerateLineshape(P,x):
     signal = Iplus + Iminus
     return signal,Iplus,Iminus
 
+def Baseline_Polynomial_Curve(w):
+    return -1.84153246e-07*w**2 + 8.42855076e-05*w - 1.11342243e-04
 
 
 

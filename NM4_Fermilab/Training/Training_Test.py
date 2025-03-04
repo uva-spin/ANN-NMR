@@ -13,7 +13,7 @@ import random
 from scipy.stats import norm
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 import sys
-from Training.RPE_Histograms import analyze_model_errors
+from Plotting.RPE_Histograms import analyze_model_errors
 
 ### Let's set a specific seed for reproducibility
 random.seed(42)
