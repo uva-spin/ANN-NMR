@@ -559,6 +559,6 @@ def calculate_binned_errors(P, n, num_bins=500, data_min=-3, data_max=3):
         if np.any(mask):
             binned_errors[i] = np.std(signal[mask])  
 
-    return bin_centers, binned_errors
+    return bin_centers, binned_errors, bin_indices 
 
 
