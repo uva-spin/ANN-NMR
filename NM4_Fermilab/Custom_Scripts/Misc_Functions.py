@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from scipy.stats import norm
 import tensorflow as tf
 from tensorflow.keras.layers import Layer
-from Lineshape import *
+from Custom_Scripts.Lineshape import *
 import sys
 
 # Add the parent directory to the system path
@@ -318,13 +318,12 @@ def Binning_Errors(y_true, y_pred, feature_space, bins=500, bin_range=(-3, 3)):
     return loss
 
 
-def calculate_binned_errors(P, n, num_bins=500, data_min=-3, data_max=3):
+def calculate_binned_errors(signal, num_bins=500, data_min=-3, data_max=3):
     """
-    Calculate binned errors for a single polarization level.
+    Calculate binned errors for a given signal.
 
     Parameters:
-    - P: Polarization level.
-    - n: Number of data points to generate.
+    - signal: The signal to calculate the binned errors for. Should be a 1D array.
     - num_bins: Number of bins for binning the data.
     - data_min: Minimum value for x_values.
     - data_max: Maximum value for x_values.
@@ -332,27 +331,29 @@ def calculate_binned_errors(P, n, num_bins=500, data_min=-3, data_max=3):
     Returns:
     - bin_centers: The centers of the bins.
     - binned_errors: The standard deviation of the signal in each bin.
+    - bin_indices: The indices of the bins.
     """
-    # Generate x_values and bin edges
-    x_values = np.linspace(data_min, data_max, n)
-    bin_edges = np.linspace(data_min, data_max, num_bins + 1)  # Bin edges
-    bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2  # Compute bin centers for plotting
+    signal = np.asarray(signal).flatten()
 
-    # Generate the signal using GenerateLineshape
-    signal, Iplus, Iminus = GenerateLineshape(P, x_values)
+    samples = len(signal)
+    x_values = np.linspace(data_min, data_max, samples)
+
+    # Bin edges
+    bin_edges = np.linspace(data_min, data_max, num_bins + 1) 
+    bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2  
 
     # Bin the data
     bin_indices = np.digitize(x_values, bin_edges) - 1
     bin_indices = np.clip(bin_indices, 0, num_bins - 1)  
 
-    # Initialize binned errors array
     binned_errors = np.zeros(num_bins)
 
     # Calculate the standard deviation for each bin
     for i in range(num_bins):
         mask = (bin_indices == i)
         if np.any(mask):
-            binned_errors[i] = np.std(signal[mask])  
+            # Calculate the standard deviation only if there are valid samples in the bin
+            binned_errors[i] = np.std(signal[mask]) if np.any(signal[mask]) else 0.0
 
     return bin_centers, binned_errors, bin_indices 
 

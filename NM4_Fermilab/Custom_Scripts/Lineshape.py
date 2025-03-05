@@ -1,6 +1,6 @@
 import numpy as np
 from scipy.special import wofz
-from Variables import *
+from Custom_Scripts.Variables import *
 
 def FrequencyBound(f):
     # Define the domain to fit (bins 100 to 400)

@@ -1,7 +1,12 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from Lineshape import *
-from Misc_Functions import *
+import sys
+import os
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from Custom_Scripts.Lineshape import *
+from Custom_Scripts.Misc_Functions import *
 import pandas as pd
 import tensorflow as tf
 from tensorflow import keras
@@ -12,21 +17,21 @@ import sklearn.model_selection as skm
 from tensorflow.keras import regularizers  
 import random
 
+
 #Seeds
 seed_value = 42
 np.random.seed(seed_value)
 random.seed(seed_value)
 tf.random.set_seed(seed_value)
 
-P = .0005
-samples = 500
+P = .3
+samples = 50000
 R = np.linspace(-3, 3, samples)
 
 
 X, _, _ = GenerateLineshape(P,R)
 
-
-frequency_bins, errF, _ = calculate_binned_errors(X, samples, num_bins=5000)
+frequency_bins, errF, _ = calculate_binned_errors(X, num_bins=5000)
 
 
 def cosine_decay_with_warmup(epoch, lr):
@@ -60,10 +65,10 @@ X = np.array(X)
 
 model = keras.Sequential([
     layers.Input(shape=(1,)),  
-    layers.Dense(32, activation='relu'),  
-    # layers.Dense(32, activation='relu'),  
-    # layers.Dense(32, activation='relu'),  
-    # layers.Dense(32,activation='relu'),
+    layers.Dense(32, activation='relu', kernel_regularizer=regularizers.l2(0.01)),  
+    layers.Dense(32, activation='relu', kernel_regularizer=regularizers.l2(0.01)),  
+    layers.Dense(32, activation='relu', kernel_regularizer=regularizers.l2(0.01)),  
+    layers.Dense(32, activation='relu', kernel_regularizer=regularizers.l2(0.01)),
     layers.Dense(1)  
 ])
 
@@ -73,7 +78,7 @@ loss_function = Binning(errF)
 initial_learning_rate = 0.01  
 model.compile(
     optimizer=keras.optimizers.Adam(learning_rate=initial_learning_rate), 
-    loss=loss_function)
+    loss='mse')
 
 early_stopping = tf.keras.callbacks.EarlyStopping(
     monitor='val_loss',  
@@ -92,9 +97,9 @@ reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(
     verbose=1)
 
 model.fit(
-    frequency_bins, X, 
+    R, X, 
     epochs=1000, 
-    batch_size=4, 
+    batch_size=128, 
     validation_split=0.2,
     callbacks=[early_stopping,
             lr_scheduler])
@@ -102,11 +107,11 @@ model.fit(
 model.save('Interpolation_Model.keras')
 
 
-x_new = np.linspace(-3, 3, 100000)
+x_new = np.linspace(-3, 3, 100)
 predictions = model.predict(x_new)
 
 plt.figure(figsize=(10, 6))
-plt.scatter(frequency_bins, X, label='Data Points', color='blue', alpha=0.5, s=4)  
+plt.scatter(R, X, label='Data Points', color='blue', alpha=0.5, s=4)  
 plt.plot(x_new, predictions, label='Interpolation', color='red')
 plt.xlabel('R')
 plt.ylabel('Intensity')
