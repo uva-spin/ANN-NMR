@@ -1,69 +1,19 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import os
-
-def plot_training_metrics(history1, history2, performance_dir, version):
-    # Create a 2x2 grid of subplots
-    plt.figure(figsize=(20, 16))
-    plt.suptitle(f'Training Metrics - {version}', y=1.02, fontsize=16)
+import seaborn as sns
+from scipy.stats import norm
     
-    # Phase 1 Metrics
-    ax1 = plt.subplot(2, 2, 1)
-    ax1.plot(history1.history['loss'], label='Training Loss')
-    ax1.plot(history1.history['val_loss'], label='Validation Loss')
-    ax1.set_title('Phase 1: Loss Curves')
-    ax1.set_xlabel('Epoch')
-    ax1.set_ylabel('Loss')
-    ax1.legend()
-    ax1.grid(True)
-    
-    ax2 = plt.subplot(2, 2, 2)
-    loss_diff_phase1 = np.array(history1.history['loss']) - np.array(history1.history['val_loss'])
-    ax2.plot(loss_diff_phase1, marker='o', label="Loss Difference")
-    ax2.axhline(0, color='red', linestyle='--', label="Zero Difference")
-    ax2.set_title('Phase 1: Training-Validation Loss Difference')
-    ax2.set_xlabel('Epoch')
-    ax2.set_ylabel('Loss Difference')
-    ax2.legend()
-    ax2.grid(True)
-    
-    # Phase 2 Metrics
-    ax3 = plt.subplot(2, 2, 3)
-    ax3.plot(history2.history['loss'], label='Training Loss')
-    ax3.plot(history2.history['val_loss'], label='Validation Loss')
-    ax3.set_title('Phase 2: Loss Curves')
-    ax3.set_xlabel('Epoch')
-    ax3.set_ylabel('Loss')
-    ax3.legend()
-    ax3.grid(True)
-    
-    ax4 = plt.subplot(2, 2, 4)
-    loss_diff_phase2 = np.array(history2.history['loss']) - np.array(history2.history['val_loss'])
-    ax4.plot(loss_diff_phase2, marker='o', label="Loss Difference")
-    ax4.axhline(0, color='red', linestyle='--', label="Zero Difference")
-    ax4.set_title('Phase 2: Training-Validation Loss Difference')
-    ax4.set_xlabel('Epoch')
-    ax4.set_ylabel('Loss Difference')
-    ax4.legend()
-    ax4.grid(True)
-    
-    plt.tight_layout()
-    metrics_plot_path = os.path.join(performance_dir, f'{version}_Training_Metrics.png')
-    plt.savefig(metrics_plot_path, dpi=600, bbox_inches='tight')
-    plt.close()
-    print(f"Training metrics plot saved to {metrics_plot_path}")
-    
-def plot_range_specific_metrics(y_true, y_pred, performance_dir, version):
+def plot_rpe_and_residuals_over_range(y_true, y_pred, performance_dir, version):
     # Create bins for different polarization ranges
     bins = [
-        (0, 0.001),    # 0-0.1%
         (0.001, 0.01),  # 0.1-1%
         (0.01, 0.1),    # 1-10%
-        (0.1, 0.8)     # 10-80%
+        (0.1, 0.8)      # 10-80%
     ]
 
     plt.figure(figsize=(18, 12))
-    plt.suptitle(f'Range-Specific Metrics - {version}', y=1.02, fontsize=16)
+    plt.suptitle(f'Range-Specific Metrics - {version}', y=1.02, fontsize=20, weight='bold')
 
     for i, (lower, upper) in enumerate(bins):
         # Filter data for current range
@@ -76,41 +26,76 @@ def plot_range_specific_metrics(y_true, y_pred, performance_dir, version):
         
         # Calculate metrics
         residuals = y_true_range - y_pred_range
+        rpe = (residuals / y_true_range) * 100  # Relative Percent Error
         mae = np.mean(np.abs(residuals))
         mse = np.mean(residuals**2)
-        
-        # Create subplot
-        ax = plt.subplot(2, 2, i+1)
-        
-        # Scatter plot of predictions vs true values
-        ax.scatter(y_true_range, y_pred_range, alpha=0.5, label=f'Predictions (MAE: {mae:.2e}, MSE: {mse:.2e})')
-        ax.plot([lower, upper], [lower, upper], 'r--', label='Ideal Prediction')
-        ax.set_title(f'Polarization Range: {lower*100:.1f}% to {upper*100:.1f}%')
-        ax.set_xlabel('True Values')
-        ax.set_ylabel('Predictions')
-        ax.legend()
-        ax.grid(True)
 
-    plt.tight_layout()
-    range_metrics_path = os.path.join(performance_dir, f'{version}_Range_Specific_Metrics.png')
+        # Create subplot for histogram of residuals using Seaborn
+        ax = plt.subplot(2, 3, i+1)
+        sns.histplot(residuals, bins=30, kde=True, stat="density", color='blue', edgecolor='black', ax=ax, alpha=0.6)
+        
+        # Fit a Gaussian to the residuals data
+        mu_res, sigma_res = norm.fit(residuals)
+        x = np.linspace(min(residuals), max(residuals), 100)
+        y_res = norm.pdf(x, mu_res, sigma_res)
+        ax.plot(x, y_res, '--', color='red', linewidth=2, label=f'Gaussian Fit: μ={mu_res:.2f}, σ={sigma_res:.2f}')
+
+        # Set titles and labels for residuals histogram
+        ax.set_title(f'Residuals Histogram: {lower*100:.1f}% to {upper*100:.1f}%', fontsize=16)
+        ax.set_xlabel('Residuals', fontsize=14)
+        ax.set_ylabel('Density', fontsize=14)
+        ax.legend(fontsize=12)
+        ax.grid(True, linestyle='--', alpha=0.7)
+
+        # Create subplot for RPE vs. Polarization using Seaborn
+        ax_rpe = plt.subplot(2, 3, i+4)  # Positioning in the second row
+        sns.scatterplot(x=y_true_range, y=rpe, marker='o', color='purple', ax=ax_rpe)
+        ax_rpe.set_title(f'RPE vs. Polarization: {lower*100:.1f}% to {upper*100:.1f}%', fontsize=16)
+        ax_rpe.set_xlabel('Polarization Values', fontsize=14)
+        ax_rpe.set_ylabel('Relative Percent Error (%)', fontsize=14)
+        ax_rpe.grid(True, linestyle='--', alpha=0.7)
+
+    plt.tight_layout(rect=[0, 0, 1, 0.96])  # Adjust layout to fit the title
+    range_metrics_path = os.path.join(performance_dir, f'{version}_Combined_Metrics.png')
     plt.savefig(range_metrics_path, dpi=600, bbox_inches='tight')
     plt.close()
-    print(f"Range-specific metrics plot saved to {range_metrics_path}")
+    print(f"Combined metrics plot saved to {range_metrics_path}")
     
+
     
-def plot_histogram(data, title, xlabel, ylabel, color, ax, num_bins=100, plot_norm=True):
-    n, bins, patches = plt.hist(data, num_bins, density=True, color=color, alpha=0.7)
-    mu, sigma = norm.fit(data)
+def plot_training_history(history, performance_dir, version):
+    """
+    Plots training and validation loss and accuracy from the training history.
 
-    if plot_norm:
-        y = norm.pdf(bins, mu, sigma)
-        plt.plot(bins, y, '--', color='black')
+    Parameters:
+    - history: A History object returned by the fit method of a Keras model.
+    """
+    plt.figure(figsize=(14, 6))
 
-    plt.title(f"{title}: μ={mu:.4f}, σ={sigma:.4f}", fontsize = 16,weight='bold')
-    plt.xlabel(xlabel, fontsize = 16,weight='bold')
-    plt.ylabel(ylabel, fontsize = 16,weight='bold')
-    ax.tick_params(axis='both', which='major', labelsize=12)  
-    ax.tick_params(axis='both', which='minor', labelsize=12)  
-    plt.grid(False)
-    # plt.savefig(save_path)
-    # plt.close()
+    # Plot training and validation loss using Seaborn
+    plt.subplot(1, 2, 1)
+    sns.lineplot(data=history.history['loss'], label='Training Loss', color='blue', marker='o')
+    sns.lineplot(data=history.history['val_loss'], label='Validation Loss', color='orange', marker='o')
+    plt.title('Training and Validation Loss', fontsize=18)
+    plt.xlabel('Epochs', fontsize=14)
+    plt.ylabel('Loss', fontsize=14)
+    plt.legend()
+    plt.grid(True, linestyle='--', alpha=0.7)
+
+    # Plot training and validation accuracy if available using Seaborn
+    if 'accuracy' in history.history and 'val_accuracy' in history.history:
+        plt.subplot(1, 2, 2)
+        sns.lineplot(data=history.history['accuracy'], label='Training Accuracy', color='green', marker='o')
+        sns.lineplot(data=history.history['val_accuracy'], label='Validation Accuracy', color='red', marker='o')
+        plt.title('Training and Validation Accuracy', fontsize=18)
+        plt.xlabel('Epochs', fontsize=14)
+        plt.ylabel('Accuracy', fontsize=14)
+        plt.legend()
+        plt.grid(True, linestyle='--', alpha=0.7)
+
+    plt.tight_layout()
+    plt.savefig(os.path.join(performance_dir, f'{version}_Training_History.png'), dpi=600, bbox_inches='tight')
+    plt.close()
+    print(f"Training history plot saved to {os.path.join(performance_dir, f'{version}_Training_History.png')}")
+
+    

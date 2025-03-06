@@ -318,6 +318,45 @@ def Binning_Errors(y_true, y_pred, feature_space, bins=500, bin_range=(-3, 3)):
     return loss
 
 
+# def calculate_binned_errors(signal, num_bins=500, data_min=-3, data_max=3):
+#     """
+#     Calculate binned errors for a given signal.
+
+#     Parameters:
+#     - signal: The signal to calculate the binned errors for. Should be a 1D array.
+#     - num_bins: Number of bins for binning the data.
+#     - data_min: Minimum value for x_values.
+#     - data_max: Maximum value for x_values.
+
+#     Returns:
+#     - bin_centers: The centers of the bins.
+#     - binned_errors: The standard deviation of the signal in each bin.
+#     - bin_indices: The indices of the bins.
+#     """
+#     signal = np.asarray(signal).flatten()
+
+#     samples = len(signal)
+#     x_values = np.linspace(data_min, data_max, samples)
+
+#     # Bin edges
+#     bin_edges = np.linspace(data_min, data_max, num_bins + 1)  # Bin edges
+#     bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2  
+
+#     # Bin the data
+#     bin_indices = np.digitize(x_values, bin_edges) - 1
+#     bin_indices = np.clip(bin_indices, 0, num_bins - 1)  
+
+#     binned_errors = np.zeros(num_bins)
+
+#     # Calculate the standard deviation for each bin
+#     for i in range(num_bins):
+#         mask = (bin_indices == i)
+#         if np.any(mask):
+#             # Calculate the standard deviation only if there are valid samples in the bin
+#             binned_errors[i] = np.std(signal[mask]) if np.any(signal[mask]) else 0.0
+
+#     return bin_centers, binned_errors, bin_indices 
+
 def calculate_binned_errors(signal, num_bins=500, data_min=-3, data_max=3):
     """
     Calculate binned errors for a given signal.
@@ -339,7 +378,7 @@ def calculate_binned_errors(signal, num_bins=500, data_min=-3, data_max=3):
     x_values = np.linspace(data_min, data_max, samples)
 
     # Bin edges
-    bin_edges = np.linspace(data_min, data_max, num_bins + 1) 
+    bin_edges = np.linspace(data_min, data_max, num_bins + 1)  # Bin edges
     bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2  
 
     # Bin the data
@@ -354,7 +393,33 @@ def calculate_binned_errors(signal, num_bins=500, data_min=-3, data_max=3):
         if np.any(mask):
             # Calculate the standard deviation only if there are valid samples in the bin
             binned_errors[i] = np.std(signal[mask]) if np.any(signal[mask]) else 0.0
+            
+            # Multiply binned errors by 1.5 for bins corresponding to x < -1.5 or x > 1.5
+            if bin_centers[i] < -1.5 or bin_centers[i] > 1.5:
+                binned_errors[i] *= 1000
 
     return bin_centers, binned_errors, bin_indices 
+
+def relative_percent_error(y_true, y_pred):
+    """
+    Custom loss function: Relative Percent Error (RPE).
+    
+    Args:
+        y_true: True values (ground truth).
+        y_pred: Predicted values.
+    
+    Returns:
+        RPE loss.
+    """
+    y_true = tf.cast(y_true, tf.float32)
+    y_pred = tf.cast(y_pred, tf.float32)
+    
+    non_zero_mask = tf.not_equal(y_true, 0)
+    rpe = tf.where(non_zero_mask, 
+                   tf.abs((y_true - y_pred) / y_true) * 100.0, 
+                   tf.zeros_like(y_true)) 
+    
+    # Return the mean RPE over the batch
+    return tf.reduce_mean(rpe)
 
 

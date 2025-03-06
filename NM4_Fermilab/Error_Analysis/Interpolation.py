@@ -24,14 +24,36 @@ np.random.seed(seed_value)
 random.seed(seed_value)
 tf.random.set_seed(seed_value)
 
-P = .3
-samples = 50000
-R = np.linspace(-3, 3, samples)
+P = .0005 # nOT IN PERCENTAGE 
+samples = 500000
+R = np.linspace(-2, 3, samples)
 
 
 X, _, _ = GenerateLineshape(P,R)
 
-frequency_bins, errF, _ = calculate_binned_errors(X, num_bins=5000)
+X = np.log(X)
+
+# fig, axs = plt.subplots(1, 2, figsize=(14, 6))  # Create side-by-side subplots
+
+# # Plot X vs. R
+# axs[0].plot(R, X, color='blue')
+# axs[0].set_title('f(x) vs. R', fontsize=16)
+# axs[0].set_xlabel('R', fontsize=14)
+# axs[0].set_ylabel('f(x)', fontsize=14)
+# axs[0].grid(True, linestyle='--', alpha=0.7)
+
+# # Plot log(X) vs. R
+# axs[1].plot(R, np.log(X), color='red')
+# axs[1].set_title('log(f(x)) vs. R', fontsize=16)
+# axs[1].set_xlabel('R', fontsize=14)
+# axs[1].set_ylabel('log(f(x))', fontsize=14)
+# axs[1].grid(True, linestyle='--', alpha=0.7)
+
+# plt.tight_layout()  # Adjust layout for better spacing
+# plt.show()
+
+frequency_bins, errF, _ = calculate_binned_errors(X, num_bins=500)
+
 
 
 def cosine_decay_with_warmup(epoch, lr):
@@ -44,7 +66,7 @@ def cosine_decay_with_warmup(epoch, lr):
 
 lr_scheduler = LearningRateScheduler(cosine_decay_with_warmup)
 
-def weighted_mse_loss(y_true, y_pred, errF):
+def Binned_MSE(y_true, y_pred, errF):
 
     errF = tf.convert_to_tensor(errF, dtype=tf.float32)
 
@@ -56,7 +78,7 @@ def weighted_mse_loss(y_true, y_pred, errF):
 
 def Binning(errF):
     def loss(y_true, y_pred):
-        return weighted_mse_loss(y_true, y_pred, errF)
+        return Binned_MSE(y_true, y_pred, errF)
     
     return loss
 
@@ -77,8 +99,8 @@ loss_function = Binning(errF)
 
 initial_learning_rate = 0.01  
 model.compile(
-    optimizer=keras.optimizers.Adam(learning_rate=initial_learning_rate), 
-    loss='mse')
+    optimizer=keras.optimizers.AdamW(learning_rate=initial_learning_rate), 
+    loss=loss_function)
 
 early_stopping = tf.keras.callbacks.EarlyStopping(
     monitor='val_loss',  
@@ -98,7 +120,7 @@ reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(
 
 model.fit(
     R, X, 
-    epochs=1000, 
+    epochs=100, 
     batch_size=128, 
     validation_split=0.2,
     callbacks=[early_stopping,
@@ -107,8 +129,11 @@ model.fit(
 model.save('Interpolation_Model.keras')
 
 
-x_new = np.linspace(-3, 3, 100)
+x_new = np.linspace(-2, 3, 50000)
 predictions = model.predict(x_new)
+
+predictions = np.exp(predictions)
+X = np.exp(X)
 
 plt.figure(figsize=(10, 6))
 plt.scatter(R, X, label='Data Points', color='blue', alpha=0.5, s=4)  

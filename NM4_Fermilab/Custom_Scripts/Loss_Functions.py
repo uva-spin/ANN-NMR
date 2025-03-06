@@ -1,9 +1,15 @@
 import tensorflow as tf
+import sys
+import os
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from Custom_Scripts.Misc_Functions import *
 
 def log_cosh_precision_loss(y_true, y_pred):
     """Hybrid loss combining log-cosh and precision weighting"""
     error = y_true - y_pred
-    precision_weights = tf.math.exp(-10.0 * y_true) + 1e-6  # Higher weight near zero
+    precision_weights = tf.math.exp(-10.0 * y_true) + 1e-6  
     return tf.reduce_mean(precision_weights * tf.math.log(cosh(error)))
 
 def cosh(x):
@@ -17,7 +23,7 @@ def balanced_precision_loss(y_true, y_pred):
 
 @tf.function(jit_compile=True)
 def adaptive_weighted_huber_loss(y_true, y_pred):
-    # Convert inputs to float32 to avoid precision mismatch
+
     y_true = tf.cast(y_true, tf.float32)
     y_pred = tf.cast(y_pred, tf.float32)
 
@@ -36,47 +42,6 @@ def adaptive_weighted_huber_loss(y_true, y_pred):
 def scaled_mse(y_true, y_pred):
     return tf.reduce_mean((100000 * (y_true - y_pred)) ** 2)  # Amplify small differences
 
-def relative_squared_error(y_true, y_pred):
-    # Calculate the numerator: squared difference between true and predicted values
-    numerator = tf.reduce_sum(tf.square(y_true - y_pred))
-    
-    # Calculate the denominator: squared difference between true values and their mean
-    y_true_mean = tf.reduce_mean(y_true)
-    denominator = tf.reduce_sum(tf.square(y_true - y_true_mean))
-    
-    # Add a small epsilon to avoid division by zero
-    epsilon = tf.keras.backend.epsilon()  # Typically 1e-7
-    rse = 100.0*(numerator / (denominator + epsilon))
-    
-    # Debugging: Print values
-    # tf.print("Numerator:", numerator, "Denominator:", denominator, "RSE:", rse)
-    
-    return rse
-
-
-def relative_percent_error(y_true, y_pred):
-    """
-    Custom loss function: Relative Percent Error (RPE).
-    
-    Args:
-        y_true: True values (ground truth).
-        y_pred: Predicted values.
-    
-    Returns:
-        RPE loss.
-    """
-    y_true = tf.cast(y_true, tf.float32)
-    y_pred = tf.cast(y_pred, tf.float32)
-    
-    rpe = tf.abs((y_true - y_pred) / (y_true)) * 100.0
-    
-    # Return the mean RPE over the batch
-    return tf.reduce_mean(rpe)
-
-def RPE_MAE(y_true, y_pred):
-    rpe = relative_percent_error(y_true, y_pred)
-    mae = tf.keras.losses.MeanAbsoluteError()(y_true, y_pred)
-    return rpe + mae
 
 def weighted_mse(y_true, y_pred):
 
@@ -92,3 +57,16 @@ def weighted_mse(y_true, y_pred):
     weighted_loss = mse * weights
     
     return tf.reduce_mean(weighted_loss)
+
+
+def Lineshape_Loss(y_true, y_pred):
+    Lineshape_True = GenerateLineshape(y_true)
+    Lineshape_Pred = GenerateLineshape(y_pred)
+    
+    return tf.reduce_mean(tf.square(Lineshape_True - Lineshape_Pred))
+
+def Polarization_Loss(y_true, y_pred):
+    return tf.reduce_mean(tf.square(y_true - y_pred))
+
+def Custom_Polarization_Loss(y_true, y_pred):
+    return Polarization_Loss(y_true, y_pred) + Lineshape_Loss(y_true, y_pred)
