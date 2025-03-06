@@ -61,10 +61,8 @@ def residual_block(x, units, dropout_rate=0.2, l1=1e-5, l2=1e-4):
 def Polarization():
     inputs = layers.Input(shape=(500,), dtype='float64')
     
-    # Initial normalization
     x = layers.LayerNormalization()(inputs)
     
-    # Consider a deeper network with more blocks if needed
     units = [128, 64, 32]  # Added one more layer
     for u in units:
         x = residual_block(x, u, dropout_rate=0.2, l1=1e-5, l2=1e-4)
@@ -79,7 +77,7 @@ def Polarization():
     
     model = tf.keras.Model(inputs=inputs, outputs=outputs)
     
-        # Consider using Lookahead wrapper from your Misc_Functions
+
     optimizer = optimizers.AdamW(
         learning_rate=0.0001,
         weight_decay=1e-3,
@@ -131,7 +129,7 @@ early_stopping = tf.keras.callbacks.EarlyStopping(
     restore_best_weights=True  
 )
 
-# Consider a custom learning rate schedule
+
 def cosine_decay_with_warmup(epoch, lr):
     warmup_epochs = 5
     total_epochs = 1000
@@ -150,7 +148,9 @@ callbacks_list = [
     tf.keras.callbacks.CSVLogger(os.path.join(performance_dir, 'training_log.csv'))
 ]
 
-# Train Model
+
+
+#Training the model
 model = Polarization()
 
     
@@ -262,45 +262,3 @@ fig.savefig(output_path,dpi=600)
 
 print(f"Histograms plotted in {output_path}!")
 
-def binning_loss(y_true, y_pred, bins=10, bin_range=(0, 0.1)):
-    """
-    Custom loss function to compute binning error for a given y value (P).
-    
-    Parameters:
-    -----------
-    y_true : tensor
-        True values (ground truth).
-    y_pred : tensor
-        Predicted values.
-    bins : int
-        Number of bins to create.
-    bin_range : tuple
-        Range of values to consider for binning (min, max).
-    
-    Returns:
-    --------
-    tensor
-        Computed binning loss.
-    """
-    # Create bins
-    bin_edges = tf.linspace(bin_range[0], bin_range[1], bins + 1)
-    
-    # Digitize the true and predicted values into bins
-    true_bins = tf.digitize(y_true, bin_edges) - 1  # -1 to make it zero-indexed
-    pred_bins = tf.digitize(y_pred, bin_edges) - 1
-    
-    # Calculate the bin counts
-    true_counts = tf.math.bincount(true_bins, minlength=bins)
-    pred_counts = tf.math.bincount(pred_bins, minlength=bins)
-    
-    # Calculate the binning error as the mean squared error between true and predicted counts
-    binning_error = tf.reduce_mean(tf.square(true_counts - pred_counts))
-    
-    return binning_error
-
-# Example of how to use the custom loss function in model compilation
-model.compile(
-    optimizer=optimizer,
-    loss=binning_loss,
-    metrics=[tf.keras.metrics.MeanAbsoluteError(name='mae')]
-)
