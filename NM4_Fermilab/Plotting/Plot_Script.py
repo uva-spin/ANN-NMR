@@ -12,6 +12,7 @@ def plot_rpe_and_residuals_over_range(y_true, y_pred, performance_dir, version):
         (0.1, 0.8)      # 10-80%
     ]
 
+    valid_bins = 0  # Count of valid bins with data
     plt.figure(figsize=(18, 12))
     plt.suptitle(f'Range-Specific Metrics - {version}', y=1.02, fontsize=20, weight='bold')
 
@@ -24,6 +25,8 @@ def plot_rpe_and_residuals_over_range(y_true, y_pred, performance_dir, version):
         if len(y_true_range) == 0:
             continue
         
+        valid_bins += 1  # Increment valid bin count
+
         # Calculate metrics
         residuals = y_true_range - y_pred_range
         rpe = (residuals / y_true_range) * 100  # Relative Percent Error
@@ -31,31 +34,36 @@ def plot_rpe_and_residuals_over_range(y_true, y_pred, performance_dir, version):
         mse = np.mean(residuals**2)
 
         # Create subplot for histogram of residuals using Seaborn
-        ax = plt.subplot(2, 3, i+1)
+        ax = plt.subplot(2, 3, valid_bins)  # Use valid_bins for positioning
         sns.histplot(residuals, bins=30, kde=True, stat="density", color='blue', edgecolor='black', ax=ax, alpha=0.6)
         
         # Fit a Gaussian to the residuals data
         mu_res, sigma_res = norm.fit(residuals)
         x = np.linspace(min(residuals), max(residuals), 100)
         y_res = norm.pdf(x, mu_res, sigma_res)
-        ax.plot(x, y_res, '--', color='red', linewidth=2, label=f'Gaussian Fit: μ={mu_res:.2f}, σ={sigma_res:.2f}')
+        ax.plot(x, y_res, '--', color='red', linewidth=2, label=f'Gaussian Fit: μ={mu_res:.6f}, σ={sigma_res:.6f}')
 
         # Set titles and labels for residuals histogram
-        ax.set_title(f'Residuals Histogram: {lower*100:.1f}% to {upper*100:.1f}%', fontsize=16)
+        ax.set_title(f'Residuals Histogram: {lower*100:.6f}% to {upper*100:.6f}%', fontsize=16)
         ax.set_xlabel('Residuals', fontsize=14)
         ax.set_ylabel('Density', fontsize=14)
         ax.legend(fontsize=12)
         ax.grid(True, linestyle='--', alpha=0.7)
 
         # Create subplot for RPE vs. Polarization using Seaborn
-        ax_rpe = plt.subplot(2, 3, i+4)  # Positioning in the second row
+        ax_rpe = plt.subplot(2, 3, valid_bins + 3)  # Positioning in the second row
         sns.scatterplot(x=y_true_range, y=rpe, marker='o', color='purple', ax=ax_rpe)
-        ax_rpe.set_title(f'RPE vs. Polarization: {lower*100:.1f}% to {upper*100:.1f}%', fontsize=16)
+        ax_rpe.set_title(f'RPE vs. Polarization: {lower*100:.4f}% to {upper*100:.4f}%', fontsize=16)
         ax_rpe.set_xlabel('Polarization Values', fontsize=14)
         ax_rpe.set_ylabel('Relative Percent Error (%)', fontsize=14)
         ax_rpe.grid(True, linestyle='--', alpha=0.7)
 
-    plt.tight_layout(rect=[0, 0, 1, 0.96])  # Adjust layout to fit the title
+    # Adjust layout based on the number of valid bins
+    if valid_bins > 0:
+        plt.tight_layout(rect=[0, 0, 1, 0.96])  # Adjust layout to fit the title
+    else:
+        plt.close()  # Close the plot if no valid bins
+
     range_metrics_path = os.path.join(performance_dir, f'{version}_Combined_Metrics.png')
     plt.savefig(range_metrics_path, dpi=600, bbox_inches='tight')
     plt.close()
