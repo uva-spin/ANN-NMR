@@ -29,7 +29,7 @@ def plot_rpe_and_residuals_over_range(y_true, y_pred, performance_dir, version):
 
         # Calculate metrics
         residuals = y_true_range - y_pred_range
-        rpe = (residuals / y_true_range) * 100  # Relative Percent Error
+        rpe = np.abs((residuals / y_true_range)) * 100  # Relative Percent Error
         mae = np.mean(np.abs(residuals))
         mse = np.mean(residuals**2)
 
@@ -105,5 +105,61 @@ def plot_training_history(history, performance_dir, version):
     plt.savefig(os.path.join(performance_dir, f'{version}_Training_History.png'), dpi=600, bbox_inches='tight')
     plt.close()
     print(f"Training history plot saved to {os.path.join(performance_dir, f'{version}_Training_History.png')}")
+
+def plot_rpe_and_residuals(y_true, y_pred, performance_dir, version):
+    """
+    Plots the Relative Percent Error (RPE) and residuals for given true and predicted values.
+
+    Parameters:
+    - y_true: Array of true values.
+    - y_pred: Array of predicted values.
+    - performance_dir: Directory to save the plot.
+    - version: Version identifier for the plot filename.
+    """
+    # Calculate metrics
+    residuals = (y_true - y_pred) * 100
+    rpe = np.abs((residuals / y_true))  # Relative Percent Error
+
+    plt.figure(figsize=(18, 6))
+
+    # Plot residuals
+    plt.subplot(1, 3, 1)
+    sns.histplot(residuals, bins=30, kde=True, stat="density", color='blue', edgecolor='black', alpha=0.6)
+    mu_res, sigma_res = norm.fit(residuals)
+    x_res = np.linspace(min(residuals), max(residuals), 100)
+    y_res = norm.pdf(x_res, mu_res, sigma_res)
+    plt.plot(x_res, y_res, '--', color='red', linewidth=2, label=f'Gaussian Fit: μ={mu_res:.6f}, σ={sigma_res:.6f}')
+    plt.title('Residuals Histogram', fontsize=16)
+    plt.xlabel('Residuals', fontsize=14)
+    plt.ylabel('Density', fontsize=14)
+    plt.legend(fontsize=12)
+    plt.grid(True, linestyle='--', alpha=0.7)
+
+    # Plot RPE
+    plt.subplot(1, 3, 2)
+    sns.scatterplot(x=y_true, y=rpe, marker='o', color='purple')
+    plt.title('Relative Percent Error vs. True Values', fontsize=16)
+    plt.xlabel('True Values', fontsize=14)
+    plt.ylabel('Relative Percent Error (%)', fontsize=14)
+    plt.grid(True, linestyle='--', alpha=0.7)
+
+    # Plot RPE Histogram
+    plt.subplot(1, 3, 3)
+    sns.histplot(rpe, bins=30, kde=True, stat="density", color='green', edgecolor='black', alpha=0.6)
+    mu_rpe, sigma_rpe = norm.fit(rpe)
+    x_rpe = np.linspace(min(rpe), max(rpe), 100)
+    y_rpe = norm.pdf(x_rpe, mu_rpe, sigma_rpe)
+    plt.plot(x_rpe, y_rpe, '--', color='orange', linewidth=2, label=f'Gaussian Fit: μ={mu_rpe:.6f}, σ={sigma_rpe:.6f}')
+    plt.title('RPE Histogram', fontsize=16)
+    plt.xlabel('Relative Percent Error (%)', fontsize=14)
+    plt.ylabel('Density', fontsize=14)
+    plt.legend(fontsize=12)
+    plt.grid(True, linestyle='--', alpha=0.7)
+
+    plt.tight_layout()
+    range_metrics_path = os.path.join(performance_dir, f'{version}_RPE_and_Residuals.png')
+    plt.savefig(range_metrics_path, dpi=600, bbox_inches='tight')
+    plt.close()
+    print(f"RPE and Residuals plot saved to {range_metrics_path}")
 
     

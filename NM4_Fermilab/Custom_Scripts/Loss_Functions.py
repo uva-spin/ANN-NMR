@@ -60,8 +60,9 @@ def weighted_mse(y_true, y_pred):
 
 
 def Lineshape_Loss(y_true, y_pred):
-    Lineshape_True = GenerateLineshape(y_true)
-    Lineshape_Pred = GenerateLineshape(y_pred)
+    X = np.linspace(-3, 3, 500)
+    Lineshape_True = GenerateLineshape(y_true, X)
+    Lineshape_Pred = GenerateLineshape(y_pred, X)
     
     return tf.reduce_mean(tf.square(Lineshape_True - Lineshape_Pred))
 

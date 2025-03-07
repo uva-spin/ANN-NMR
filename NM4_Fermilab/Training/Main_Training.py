@@ -32,70 +32,63 @@ if physical_devices:
     tf.config.experimental.set_memory_growth(physical_devices[0], True)
     print(f"Using GPU: {physical_devices[0]}")
 
-tf.keras.backend.set_floatx('float64')
+
+tf.keras.backend.set_floatx('float32')
 
 # File paths and versioning
 data_path = find_file("Deuteron_Low_No_Noise_500K.csv")  
-version = 'Deuteron_Low_ResNet_V13_Weighted_MSE'  
+version = 'Deuteron_Low_ResNet_V19_LogCosh'  
 performance_dir = f"Model Performance/{version}"  
 model_dir = f"Models/{version}"  
 os.makedirs(performance_dir, exist_ok=True)
 os.makedirs(model_dir, exist_ok=True)
 
-def residual_block(x, units, dropout_rate=0.2, l1=1e-5, l2=1e-4):
+
+def residual_block(x, units):
     shortcut = x
-    x = layers.Dense(units, activation='swish', 
-                     kernel_initializer='he_normal', 
-                     kernel_regularizer=regularizers.l1_l2(l1=l1, l2=l2), 
-                     dtype='float64')(x)
-    x = layers.LayerNormalization()(x)  
-    x = layers.Dropout(dropout_rate)(x)
+    x = layers.Dense(units, activation='swish',  # Swish activation
+                     kernel_initializer="he_normal",
+                     kernel_regularizer=regularizers.l2(1e-5))(x)
+    x = layers.LayerNormalization()(x)
     
     if shortcut.shape[-1] != units:
-        shortcut = layers.Dense(units, activation='swish', 
-                                kernel_initializer='he_normal', 
-                                kernel_regularizer=regularizers.l1_l2(l1=l1, l2=l2), 
-                                dtype='float64')(shortcut)
-        shortcut = layers.LayerNormalization()(shortcut)
-    
-    return layers.Add()([shortcut, x])
+        shortcut = layers.Dense(units, kernel_initializer="he_normal")(shortcut)
+        
+    x = layers.Add()([x, shortcut])
+    return x
 
 def Polarization():
-    inputs = layers.Input(shape=(500,), dtype='float64')
+    inputs = layers.Input(shape=(500,), dtype='float32')
     
+    # x = layers.Dense(512, activation=tf.nn.silu,
+    #                 kernel_initializer=initializers.HeNormal())(inputs)
     x = layers.LayerNormalization()(inputs)
     
-    units = [128, 64, 32] 
+    units = [256, 128, 128, 64, 32]
     for u in units:
-        x = residual_block(x, u, dropout_rate=0.2, l1=1e-5, l2=1e-4)
+        x = residual_block(x, u)
     
-    x = layers.Dropout(0.1)(x)
-    
-    outputs = layers.Dense(1, 
-                activation='sigmoid',
-                kernel_initializer=initializers.HeNormal(),
-                kernel_regularizer=regularizers.l1_l2(l1=1e-5, l2=1e-4),
-                dtype='float64')(x)
+    x = layers.Dense(64, activation='swish',
+                    kernel_initializer=initializers.GlorotNormal())(x)
+    outputs = layers.Dense(1, activation='linear',
+                          kernel_initializer=initializers.RandomNormal(stddev=1e-4))(x)
     
     model = tf.keras.Model(inputs=inputs, outputs=outputs)
     
-
-    optimizer = optimizers.AdamW(
-        learning_rate=0.01,
-        weight_decay=1e-3,
+    optimizer = optimizers.Nadam(
+        learning_rate=5e-5,
+        beta_1=0.9,
+        beta_2=0.999,
+        # clipnorm=0.1
         epsilon=1e-6,
-        clipnorm=0.1,
+        clipnorm = 1.0
     )
-
+    
     model.compile(
         optimizer=optimizer,
         loss=log_cosh_precision_loss,
-        metrics=[
-            tf.keras.metrics.MeanAbsoluteError(name='mae'),
-            tf.keras.metrics.RootMeanSquaredError(name='rmse')
-        ]
+        metrics=[tf.keras.metrics.MeanAbsoluteError(name='mae')]
     )
-    
     return model
 
 
@@ -105,25 +98,25 @@ data = pd.read_csv(data_path)
 train_data, temp_data = train_test_split(data, test_size=0.3, random_state=42)
 val_data, test_data = train_test_split(temp_data, test_size=1/3, random_state=42)
 
-X_train = train_data.drop(columns=["P", 'SNR']).astype('float64').values
-y_train = train_data["P"].astype('float64').values
-X_val = val_data.drop(columns=["P", 'SNR']).astype('float64').values
-y_val = val_data["P"].astype('float64').values
-X_test = test_data.drop(columns=["P", 'SNR']).astype('float64').values
-y_test = test_data["P"].astype('float64').values
+X_train = train_data.drop(columns=["P", 'SNR']).astype('float32').values
+y_train = train_data["P"].astype('float32').values
+X_val = val_data.drop(columns=["P", 'SNR']).astype('float32').values
+y_val = val_data["P"].astype('float32').values
+X_test = test_data.drop(columns=["P", 'SNR']).astype('float32').values
+y_test = test_data["P"].astype('float32').values
 
 # Normalize Data
 scaler = StandardScaler().fit(X_train)
-X_train = scaler.transform(X_train).astype('float64')
-X_val = scaler.transform(X_val).astype('float64')
-X_test = scaler.transform(X_test).astype('float64')
+X_train = scaler.transform(X_train).astype('float32')
+X_val = scaler.transform(X_val).astype('float32')
+X_test = scaler.transform(X_test).astype('float32')
 
 
 # tensorboard_callback = CustomTensorBoard(log_dir='./logs')
 early_stopping = tf.keras.callbacks.EarlyStopping(
     monitor='val_mae',  
-    patience=10,        
-    min_delta=1e-6,     
+    patience=50,        
+    min_delta=1e-9,     
     mode='min',         
     restore_best_weights=True  
 )
@@ -156,7 +149,7 @@ history = model.fit(
     X_train, y_train,
     validation_data=(X_val, y_val),
     epochs=100,
-    batch_size=128,  
+    batch_size=256,  
     callbacks=callbacks_list,
     verbose=2
 )
@@ -167,7 +160,9 @@ residuals = y_test - y_test_pred
 rpe = np.abs((y_test - y_test_pred) / np.abs(y_test)) * 100  
 
 ### Plotting the results
-plot_rpe_and_residuals_over_range(y_test, y_test_pred, performance_dir, version)
+# plot_rpe_and_residuals_over_range(y_test, y_test_pred, performance_dir, version)
+
+plot_rpe_and_residuals(y_test, y_test_pred, performance_dir, version)
 
 
 plot_training_history(history, performance_dir, version)
@@ -181,5 +176,7 @@ test_results_df = pd.DataFrame({
 test_results_df.to_csv(event_results_file, index=False)
 
 print(f"Test results saved to {event_results_file}")
+
+save_model_summary(model, performance_dir, version)
 
 

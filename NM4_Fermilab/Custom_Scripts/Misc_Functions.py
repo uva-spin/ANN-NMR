@@ -10,6 +10,8 @@ import tensorflow as tf
 from tensorflow.keras.layers import Layer
 from Custom_Scripts.Lineshape import *
 import sys
+from io import StringIO
+
 
 # Add the parent directory to the system path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -422,4 +424,23 @@ def relative_percent_error(y_true, y_pred):
     # Return the mean RPE over the batch
     return tf.reduce_mean(rpe)
 
+def save_model_summary(model, performance_dir, version):
+    # Create the Models directory if it doesn't exist
+    models_dir = os.path.join(performance_dir, 'Models')
+    os.makedirs(models_dir, exist_ok=True)
+
+    # Define the filename based on the version
+    filename = os.path.join(models_dir, f'model_summary_{version}.txt')
+
+    # Redirect stdout to capture the model summary
+    string_io = StringIO()
+    sys.stdout = string_io
+    model.summary()
+    sys.stdout = sys.__stdout__  # Reset redirect
+
+    # Write the model summary to the file
+    with open(filename, 'w') as f:
+        f.write(string_io.getvalue())
+
+    print(f"Model summary saved to {filename}")
 
