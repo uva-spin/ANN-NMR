@@ -4,6 +4,7 @@ import sys
 import os
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+current_dir = os.path.dirname(os.path.abspath(__file__))
 
 from Custom_Scripts.Lineshape import *
 from Custom_Scripts.Misc_Functions import *
@@ -16,7 +17,7 @@ from sklearn.preprocessing import MinMaxScaler
 import sklearn.model_selection as skm
 from tensorflow.keras import regularizers  
 import random
-
+from tqdm import tqdm
 
 #Seeds
 seed_value = 42
@@ -24,36 +25,45 @@ np.random.seed(seed_value)
 random.seed(seed_value)
 tf.random.set_seed(seed_value)
 
-P = .0005 # nOT IN PERCENTAGE 
-samples = 500000
-R = np.linspace(-2, 3, samples)
+### Version ###
+version = 'varied_polarization'
 
 
-X, _, _ = GenerateLineshape(P,R)
+### Number of points in lineshape ###
+samples = 50000
 
-X = np.log(X)
+### Polarizations ###
+Ps = np.empty(samples)
 
-# fig, axs = plt.subplots(1, 2, figsize=(14, 6))  # Create side-by-side subplots
+### Lineshapes ###
 
-# # Plot X vs. R
-# axs[0].plot(R, X, color='blue')
-# axs[0].set_title('f(x) vs. R', fontsize=16)
-# axs[0].set_xlabel('R', fontsize=14)
-# axs[0].set_ylabel('f(x)', fontsize=14)
-# axs[0].grid(True, linestyle='--', alpha=0.7)
+Xs = []
+R = np.linspace(-3.5, 3.5, samples)  
 
-# # Plot log(X) vs. R
-# axs[1].plot(R, np.log(X), color='red')
-# axs[1].set_title('log(f(x)) vs. R', fontsize=16)
-# axs[1].set_xlabel('R', fontsize=14)
-# axs[1].set_ylabel('log(f(x))', fontsize=14)
-# axs[1].grid(True, linestyle='--', alpha=0.7)
+for i in tqdm(range(1)):
+    Ps[i] = .0005 + np.random.uniform(0.00001, 0.00001)  
+    X, _, _ = GenerateLineshape(Ps[i], R)
+    Xs.append(np.log(X))  
+    
 
-# plt.tight_layout()  # Adjust layout for better spacing
-# plt.show()
+Xs = np.array(Xs) 
+Xs_df = pd.DataFrame(Xs) 
 
-frequency_bins, errF, _ = calculate_binned_errors(X, num_bins=500)
+df = pd.DataFrame(Ps, columns=["P"])
 
+result_df = pd.concat([df, Xs_df], axis=1)
+
+csv_file_path = os.path.join(current_dir, f'Interpolation_Data_{version}.csv') 
+result_df.to_csv(csv_file_path, index=False)
+
+print(f"Data saved to {csv_file_path}")
+
+print(Xs.shape)
+print(Ps.shape)
+
+frequency_bins, errF, _ = calculate_binned_errors(Xs, num_bins=samples)
+
+print(errF.shape)
 
 
 def cosine_decay_with_warmup(epoch, lr):
@@ -82,17 +92,18 @@ def Binning(errF):
     
     return loss
 
-X = np.array(X) 
-
 
 model = keras.Sequential([
     layers.Input(shape=(1,)),  
-    layers.Dense(32, activation='relu', kernel_regularizer=regularizers.l2(0.01)),  
-    layers.Dense(32, activation='relu', kernel_regularizer=regularizers.l2(0.01)),  
-    layers.Dense(32, activation='relu', kernel_regularizer=regularizers.l2(0.01)),  
-    layers.Dense(32, activation='relu', kernel_regularizer=regularizers.l2(0.01)),
+    layers.Dense(256, activation=tf.nn.swish, kernel_regularizer=regularizers.l2(0.001)),
+    layers.Dense(128, activation=tf.nn.swish, kernel_regularizer=regularizers.l2(0.001)),  
+    layers.Dense(128, activation=tf.nn.swish, kernel_regularizer=regularizers.l2(0.001)),  
+    layers.Dense(64, activation=tf.nn.swish, kernel_regularizer=regularizers.l2(0.001)),  
+    layers.Dense(64, activation=tf.nn.swish, kernel_regularizer=regularizers.l2(0.001)),
+    layers.Dense(32, activation=tf.nn.swish, kernel_regularizer=regularizers.l2(0.001)),
     layers.Dense(1)  
 ])
+
 
 loss_function = Binning(errF)
 
@@ -105,7 +116,7 @@ model.compile(
 early_stopping = tf.keras.callbacks.EarlyStopping(
     monitor='val_loss',  
     patience=10,        
-    min_delta=1e-6,     
+    min_delta=1e-8,     
     mode='min',         
     restore_best_weights=True  
 )
@@ -119,28 +130,28 @@ reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(
     verbose=1)
 
 model.fit(
-    R, X, 
-    epochs=100, 
-    batch_size=128, 
+    R, Xs, 
+    epochs=1000, 
+    batch_size=64, 
     validation_split=0.2,
     callbacks=[early_stopping,
             lr_scheduler])
 
-model.save('Interpolation_Model.keras')
+model.save(os.path.join(current_dir, f'Interpolation_Model_{version}.keras'))
 
 
-x_new = np.linspace(-2, 3, 50000)
+x_new = np.linspace(-3, 3, 50000)
 predictions = model.predict(x_new)
 
 predictions = np.exp(predictions)
-X = np.exp(X)
+X = np.exp(Xs)
 
 plt.figure(figsize=(10, 6))
 plt.scatter(R, X, label='Data Points', color='blue', alpha=0.5, s=4)  
 plt.plot(x_new, predictions, label='Interpolation', color='red')
 plt.xlabel('R')
 plt.ylabel('Intensity')
-plt.title('Interpolation using 1-1 NN')
+plt.title(f'Interpolation using 1-1 NN (P = {Ps[0]})')
 plt.legend()
 plt.show()
 
