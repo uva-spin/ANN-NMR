@@ -1,0 +1,2 @@
+P_value,Model_path,Predictions_path
+0.000543,/home/devin/Documents/ANN-NMR/NM4_Fermilab/Error_Analysis/varied_p_models/model_p_0.0005430.keras,/home/devin/Documents/ANN-NMR/NM4_Fermilab/Error_Analysis/predictions_p_0.0005430.csv

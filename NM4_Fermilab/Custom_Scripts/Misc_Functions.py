@@ -54,17 +54,36 @@ def apply_distortion(signal, alpha):
     return distorted_signal
 
 def find_file(filename, start_dir='.'):
-    current_dir = os.path.abspath(start_dir)
-    levels_up = 0
+    """
+    Search for a file by name in the starting directory and up to 2 parent directories.
     
-    while levels_up <= 2:  
-
-        for file in glob.glob(os.path.join(current_dir, '**', filename), recursive=True):
-            return file
+    Args:
+        filename (str): Name of the file to find
+        start_dir (str): Directory to start the search from (default: current directory)
         
-  
-        current_dir = os.path.abspath(os.path.join(current_dir, '..'))
-        levels_up += 1
+    Returns:
+        str or None: Full path to the first matching file, or None if not found
+    """
+    # Start from absolute path of the starting directory
+    current_dir = os.path.abspath(start_dir)
+    
+    # Search up to 2 levels up from the starting directory
+    for _ in range(3):  # 0, 1, 2 levels up
+        # Use glob to find the file in current directory and all subdirectories
+        matches = glob.glob(os.path.join(current_dir, '**', filename), recursive=True)
+        
+        # Return the first match if found
+        if matches:
+            return matches[0]
+            
+        # Move up to parent directory
+        parent_dir = os.path.dirname(current_dir)
+        
+        # Stop if we've reached the root directory
+        if parent_dir == current_dir:
+            break
+            
+        current_dir = parent_dir
     
     return None
 
@@ -128,10 +147,6 @@ def test_data_generator(file_path, chunk_size=10000, test_fraction=0.1):
     y_test = test_df[target_variable].values
     test_dataset = tf.data.Dataset.from_tensor_slices((X_test, y_test)).batch(1024).prefetch(tf.data.experimental.AUTOTUNE)
     return test_dataset
-
-
-
-
 
 
 import tensorflow as tf
