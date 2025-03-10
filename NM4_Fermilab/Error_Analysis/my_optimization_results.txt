@@ -1,0 +1,118 @@
+==================================================
+OPTIMIZATION RESULTS
+==================================================
+
+OPTIMIZED PARAMETERS:
+--------------------------------------------------
+Parameter 1: 0.0004 = 0.00033000
+Parameter 2: 0.0004222222222222 = 0.00047000
+Parameter 3: 0.0004444444444444 = 0.00041000
+Parameter 4: 0.0004666666666666 = 0.00048200
+Parameter 5: 0.0004888888888888 = 0.00049430
+Parameter 6: 0.0005111111111111 = 0.00050600
+Parameter 7: 0.0005333333333333 = 0.00051800
+Parameter 8: 0.0005555555555555 = 0.00053000
+Parameter 9: 0.0005777777777777 = 0.00057000
+Parameter 10: 0.0006 = 0.00057000
+--------------------------------------------------
+
+RESIDUALS (P_true - P_optimized):
+--------------------------------------------------
+Parameter 1: 0.0004
+    True value:      0.00040000
+    Optimized value: 0.00033000
+    Residual:        0.00007000
+    Percent error:   17.5000%
+
+Parameter 2: 0.0004222222222222
+    True value:      0.00042222
+    Optimized value: 0.00047000
+    Residual:        -0.00004778
+    Percent error:   -11.3158%
+
+Parameter 3: 0.0004444444444444
+    True value:      0.00044444
+    Optimized value: 0.00041000
+    Residual:        0.00003444
+    Percent error:   7.7500%
+
+Parameter 4: 0.0004666666666666
+    True value:      0.00046667
+    Optimized value: 0.00048200
+    Residual:        -0.00001533
+    Percent error:   -3.2857%
+
+Parameter 5: 0.0004888888888888
+    True value:      0.00048889
+    Optimized value: 0.00049430
+    Residual:        -0.00000541
+    Percent error:   -1.1068%
+
+Parameter 6: 0.0005111111111111
+    True value:      0.00051111
+    Optimized value: 0.00050600
+    Residual:        0.00000511
+    Percent error:   1.0000%
+
+Parameter 7: 0.0005333333333333
+    True value:      0.00053333
+    Optimized value: 0.00051800
+    Residual:        0.00001533
+    Percent error:   2.8750%
+
+Parameter 8: 0.0005555555555555
+    True value:      0.00055556
+    Optimized value: 0.00053000
+    Residual:        0.00002556
+    Percent error:   4.6000%
+
+Parameter 9: 0.0005777777777777
+    True value:      0.00057778
+    Optimized value: 0.00057000
+    Residual:        0.00000778
+    Percent error:   1.3462%
+
+Parameter 10: 0.0006
+    True value:      0.00060000
+    Optimized value: 0.00057000
+    Residual:        0.00003000
+    Percent error:   5.0000%
+
+--------------------------------------------------
+
+COVARIANCE MATRICES:
+--------------------------------------------------
+
+Matrix 1 (Parameter: 0.0004):
+    2.4202e-05
+
+Matrix 2 (Parameter: 0.0004222222222222):
+    5.4673e-05
+
+Matrix 3 (Parameter: 0.0004444444444444):
+    2.6322e-05
+
+Matrix 4 (Parameter: 0.0004666666666666):
+    2.2302e-05
+
+Matrix 5 (Parameter: 0.0004888888888888):
+    2.6909e-05
+
+Matrix 6 (Parameter: 0.0005111111111111):
+    2.6270e-05
+
+Matrix 7 (Parameter: 0.0005333333333333):
+    2.4988e-05
+
+Matrix 8 (Parameter: 0.0005555555555555):
+    2.5991e-05
+
+Matrix 9 (Parameter: 0.0005777777777777):
+    2.7852e-05
+
+Matrix 10 (Parameter: 0.0006):
+    2.4917e-05
+--------------------------------------------------
+
+
+File generated on: 2025-03-10 16:46:41

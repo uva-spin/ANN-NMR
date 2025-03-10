@@ -13,7 +13,9 @@ from tensorflow.keras import regularizers
 import random
 from tqdm import tqdm
 import matplotlib.cm as cm
-
+from scipy.optimize import curve_fit
+import glob  # Import glob to find files
+import datetime
 # Add path to custom scripts
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -38,8 +40,8 @@ R = np.linspace(-3.5, 3.5, samples)
 P_center = 0.0005
 P_range = 0.0001
 num_steps = 10
-# P_values = np.linspace(P_center - P_range, P_center + P_range, num_steps)
-P_values = np.array([0.000543])
+P_values = np.linspace(P_center - P_range, P_center + P_range, num_steps)
+# P_values = np.array([0.000543])
 
 # Generate the reference lineshape at P = 0.0005
 reference_P = 0.0005
@@ -90,6 +92,7 @@ def cosine_decay_with_warmup(epoch, lr):
 all_predictions = []
 all_models = []
 all_true_lineshapes = []
+predicted_lineshapes = []
 
 models_dir = os.path.join(current_dir, 'varied_p_models')
 os.makedirs(models_dir, exist_ok=True)
@@ -113,7 +116,7 @@ for i, p_value in enumerate(tqdm(P_values, desc="Training models")):
         monitor='val_loss',
         patience=30,
         min_delta=1e-8,
-        mode='max',
+        mode='min',
         restore_best_weights=True
     )
     reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(
@@ -129,7 +132,7 @@ for i, p_value in enumerate(tqdm(P_values, desc="Training models")):
     # Train the model
     history = model.fit(
         R_reshaped, X_log_reshaped,
-        epochs=100,  
+        epochs=50,  
         batch_size=128,
         validation_split=0.2,
         callbacks=[early_stopping, lr_scheduler, reduce_lr],
@@ -151,17 +154,14 @@ for i, p_value in enumerate(tqdm(P_values, desc="Training models")):
     true_X, _, _ = GenerateLineshape(p_value, x_new)
     all_true_lineshapes.append(true_X)
     
-    pred_df = pd.DataFrame({
-        'R': x_new,
-        'True_Lineshape': true_X,
-        'Predicted_Lineshape': predictions.flatten()
-    })
     
-    csv_path = os.path.join(current_dir, f'predictions_p_{p_value:.7f}.csv')
-    pred_df.to_csv(csv_path, index=False)
-    
-    print(f"Saved predictions for P = {p_value:.7f} to {csv_path}")
+df = pd.DataFrame(all_predictions)
+df["P_true"] = P_values
+csv_path = os.path.join(current_dir, f'predictions_p_{p_value:.7f}.csv')
+df.to_csv(csv_path, index=False)
 
+print(f"Saved predictions for P = {p_value:.7f} to {csv_path}")
+    
 # Now create a comprehensive plot comparing all models
 plt.figure(figsize=(15, 10))
 
@@ -186,7 +186,7 @@ plt.tight_layout()
 
 plot_path = os.path.join(current_dir, 'polarization_variation_comparison.png')
 plt.savefig(plot_path, dpi=300, bbox_inches='tight')
-plt.show()
+# plt.show()
 
 print(f"Comparison plot saved to {plot_path}")
 
@@ -202,3 +202,176 @@ summary_df.to_csv(summary_path, index=False)
 
 print(f"Summary information saved to {summary_path}")
 print(f"Completed analysis of {num_steps} P values between {P_values[0]:.7f} and {P_values[-1]:.7f}")
+
+df = pd.read_csv(os.path.join(current_dir, 'Lineshape_Predictions.csv'))
+
+predictions = df.drop(columns=["P_true"]).values
+P_values = df["P_true"].values
+
+def Baseline(x, P):
+    Sig, _, _ = GenerateLineshape(P, x)
+    return Sig
+
+X = np.linspace(-3, 3, 10000)
+
+initial_params = [0.00038, 0.00042, 0.00046, 0.000532, 0.0005443, 0.000556, 0.000568, 0.00058, 0.00062, 0.00062]
+
+lower_bounds = [p - 0.00005 for p in initial_params]
+upper_bounds = [p + 0.00005 for p in initial_params]
+param_bounds = (lower_bounds, upper_bounds)
+
+covs = []
+popts = []
+residuals = []  # Initialize a list to store residuals
+
+for i, (lower_bound, upper_bound) in enumerate(zip(lower_bounds, upper_bounds)):
+    popt, pcov = curve_fit(Baseline, X, predictions[i], p0=initial_params[i], bounds=(lower_bound, upper_bound))
+    covs.append(pcov)
+    popts.append(popt)
+    
+    # Calculate residuals
+    P_true = P_values[i]*100
+    popt = popt*100
+    residual = P_true - popt  # Calculate the residual
+    residuals.append(residual)  # Store the residual
+    
+
+# Calculate statistics for residuals
+residual_mean = np.mean(residuals)
+residual_std = np.std(residuals)
+residuals_array = np.array(residuals).flatten()
+# Plot histogram of residuals with Gaussian fit
+plt.figure(figsize=(10, 6))
+
+# Create histogram
+n, bins, patches = plt.hist(residuals_array, bins=min(10, num_steps), 
+                            color='skyblue', edgecolor='black', 
+                            alpha=0.7, density=True)
+
+# Fit a Gaussian curve to the histogram
+def gaussian(x, mean, std, amplitude):
+    return amplitude * np.exp(-((x - mean) ** 2) / (2 * std ** 2))
+
+# Create x values for the Gaussian curve
+bin_centers = (bins[:-1] + bins[1:]) / 2
+bin_width = bins[1] - bins[0]
+
+# Initial guess for the fit
+p0 = [residual_mean, residual_std, 1.0/(residual_std * np.sqrt(2 * np.pi))]
+
+try:
+    # Try to fit a Gaussian to the histogram data
+    params, covs_gauss = curve_fit(gaussian, bin_centers, n, p0=p0)
+    fitted_mean, fitted_std, amplitude = params
+    
+    # Create smooth curve for plotting
+    x_smooth = np.linspace(min(bins), max(bins), 100)
+    y_smooth = gaussian(x_smooth, fitted_mean, fitted_std, amplitude)
+    
+    # Plot the fitted Gaussian curve
+    plt.plot(x_smooth, y_smooth, 'r-', linewidth=2, 
+                label=f'Gaussian Fit\nMean = {fitted_mean:.5f}\nStd Dev = {fitted_std:.5f}')
+    
+    # Store the fitted parameters
+    gauss_fit_params = {
+        'mean': fitted_mean,
+        'std_dev': fitted_std,
+        'amplitude': amplitude
+    }
+except:
+    # If fitting fails, use the calculated statistics
+    plt.axvline(residual_mean, color='r', linestyle='--', 
+                label=f'Mean = {residual_mean:.5f}')
+    plt.axvline(residual_mean + residual_std, color='g', linestyle=':', 
+                label=f'±Std Dev = {residual_std:.5f}')
+    plt.axvline(residual_mean - residual_std, color='g', linestyle=':')
+    
+    gauss_fit_params = {
+        'mean': residual_mean,
+        'std_dev': residual_std,
+        'amplitude': None,
+        'note': 'Gaussian fitting failed, using sample statistics'
+    }
+
+plt.xlabel('Residual (P_true - P_optimized) × 100')
+plt.ylabel('Probability Density')
+plt.title('Histogram of Fitting Residuals with Gaussian Fit')
+plt.grid(alpha=0.3)
+plt.legend()
+
+# Save histogram with Gaussian fit
+histogram_path = os.path.join(current_dir, "residuals_histogram_NN_with_gaussian.png")
+plt.savefig(histogram_path)
+plt.close()
+
+# Save results to a file
+def save_results_to_file(P_true=None, filename="optimization_results_NN.txt"):
+    with open(filename, 'w') as f:
+        # Write header
+        f.write("="*50 + "\n")
+        f.write("OPTIMIZATION RESULTS\n")
+        f.write("="*50 + "\n\n")
+        
+        # Write optimized parameters
+        f.write("OPTIMIZED PARAMETERS:\n")
+        f.write("-"*50 + "\n")
+        for i, (P_true, param_value) in enumerate(zip(P_values, popts)):
+            # Handle both single value and array cases
+            if hasattr(param_value, '__iter__') and not isinstance(param_value, str):
+                formatted_value = f"{param_value[0]:.8f}"
+            else:
+                formatted_value = f"{param_value:.8f}"
+            
+            f.write(f"Parameter {i+1}: {P_true} = {formatted_value}\n")
+        f.write("-"*50 + "\n\n")
+        
+        # Write residuals if P_true is provided
+        if P_true is not None:
+            f.write("RESIDUALS (P_true - P_optimized):\n")
+            f.write("-"*50 + "\n")
+            for i, (P_true, opt_val) in enumerate(zip(P_values, popts)):
+                # Handle both single value and array cases for optimized values
+                if hasattr(opt_val, '__iter__') and not isinstance(opt_val, str):
+                    opt_val = opt_val[0]
+                
+                # Calculate residual
+                residual = P_true - opt_val
+                percent_error = (residual / P_true) * 100 if P_true != 0 else float('inf')
+                
+                f.write(f"Parameter {i+1}: {P_true}\n")
+                f.write(f"    True value:      {P_true:.8f}\n")
+                f.write(f"    Optimized value: {opt_val:.8f}\n")
+                f.write(f"    Residual:        {residual:.8f}\n")
+                f.write(f"    Percent error:   {percent_error:.4f}%\n\n")
+            f.write("-"*50 + "\n\n")
+        
+        # Write covariance matrices
+        f.write("COVARIANCE MATRICES:\n")
+        f.write("-"*50 + "\n")
+        for i, cov in enumerate(covs):
+            f.write(f"\nMatrix {i+1} (Parameter: {P_values[i]}):\n")
+            # Check the type of cov and handle accordingly
+            if np.isscalar(cov):
+                # If it's a scalar value
+                f.write(f"    {cov:.8e}\n")
+            elif isinstance(cov, (list, np.ndarray)):
+                # If it's an array or matrix
+                if hasattr(cov, 'shape') and len(cov.shape) == 2:
+                    # For 2D matrices
+                    for row in cov:
+                        formatted_row = "    " + " ".join([f"{val:.4e}" for val in row])
+                        f.write(formatted_row + "\n")
+                else:
+                    # For 1D arrays or other structures
+                    f.write(f"    {cov}\n")
+            else:
+                # Fallback for any other type
+                f.write(f"    {cov}\n")
+        f.write("-"*50 + "\n")
+        
+        f.write("\n\nFile generated on: " + datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    
+    print(f"Results saved to '{filename}'")
+
+
+save_results_to_file(P_true = P_values, filename=os.path.join(current_dir, "NN_Optimization_Results.txt"))

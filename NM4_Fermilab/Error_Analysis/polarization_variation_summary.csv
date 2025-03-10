@@ -1,2 +1,11 @@
 P_value,Model_path,Predictions_path
-0.000543,/home/devin/Documents/ANN-NMR/NM4_Fermilab/Error_Analysis/varied_p_models/model_p_0.0005430.keras,/home/devin/Documents/ANN-NMR/NM4_Fermilab/Error_Analysis/predictions_p_0.0005430.csv
+0.0004,/home/ptgroup/Documents/Devin/ANN-NMR/NM4_Fermilab/Error_Analysis/varied_p_models/model_p_0.0004000.keras,/home/ptgroup/Documents/Devin/ANN-NMR/NM4_Fermilab/Error_Analysis/predictions_p_0.0004000.csv
+0.00042222222222222227,/home/ptgroup/Documents/Devin/ANN-NMR/NM4_Fermilab/Error_Analysis/varied_p_models/model_p_0.0004222.keras,/home/ptgroup/Documents/Devin/ANN-NMR/NM4_Fermilab/Error_Analysis/predictions_p_0.0004222.csv
+0.00044444444444444447,/home/ptgroup/Documents/Devin/ANN-NMR/NM4_Fermilab/Error_Analysis/varied_p_models/model_p_0.0004444.keras,/home/ptgroup/Documents/Devin/ANN-NMR/NM4_Fermilab/Error_Analysis/predictions_p_0.0004444.csv
+0.0004666666666666667,/home/ptgroup/Documents/Devin/ANN-NMR/NM4_Fermilab/Error_Analysis/varied_p_models/model_p_0.0004667.keras,/home/ptgroup/Documents/Devin/ANN-NMR/NM4_Fermilab/Error_Analysis/predictions_p_0.0004667.csv
+0.000488888888888889,/home/ptgroup/Documents/Devin/ANN-NMR/NM4_Fermilab/Error_Analysis/varied_p_models/model_p_0.0004889.keras,/home/ptgroup/Documents/Devin/ANN-NMR/NM4_Fermilab/Error_Analysis/predictions_p_0.0004889.csv
+0.0005111111111111112,/home/ptgroup/Documents/Devin/ANN-NMR/NM4_Fermilab/Error_Analysis/varied_p_models/model_p_0.0005111.keras,/home/ptgroup/Documents/Devin/ANN-NMR/NM4_Fermilab/Error_Analysis/predictions_p_0.0005111.csv
+0.0005333333333333334,/home/ptgroup/Documents/Devin/ANN-NMR/NM4_Fermilab/Error_Analysis/varied_p_models/model_p_0.0005333.keras,/home/ptgroup/Documents/Devin/ANN-NMR/NM4_Fermilab/Error_Analysis/predictions_p_0.0005333.csv
+0.0005555555555555557,/home/ptgroup/Documents/Devin/ANN-NMR/NM4_Fermilab/Error_Analysis/varied_p_models/model_p_0.0005556.keras,/home/ptgroup/Documents/Devin/ANN-NMR/NM4_Fermilab/Error_Analysis/predictions_p_0.0005556.csv
+0.0005777777777777779,/home/ptgroup/Documents/Devin/ANN-NMR/NM4_Fermilab/Error_Analysis/varied_p_models/model_p_0.0005778.keras,/home/ptgroup/Documents/Devin/ANN-NMR/NM4_Fermilab/Error_Analysis/predictions_p_0.0005778.csv
+0.0006000000000000001,/home/ptgroup/Documents/Devin/ANN-NMR/NM4_Fermilab/Error_Analysis/varied_p_models/model_p_0.0006000.keras,/home/ptgroup/Documents/Devin/ANN-NMR/NM4_Fermilab/Error_Analysis/predictions_p_0.0006000.csv
