@@ -13,6 +13,7 @@ import joblib
 import random
 from scipy.stats import norm
 from pytorch_tabnet.callbacks import Callback
+import csv
 
 class CustomCSVLogger(Callback):
     def __init__(self, filepath, separator=",", append=False):
@@ -64,7 +65,7 @@ print(f"Using device: {device}")
 
 # File paths and versioning
 data_path = find_file("Deuteron_Low_No_Noise_500K.csv") 
-version = f'Deuteron_TabNet_V1'
+version = f'Deuteron_TabNet_V2'
 performance_dir = f"Model_Performance/{version}"
 model_dir = f"Models/{version}"
 os.makedirs(performance_dir, exist_ok=True)
@@ -104,7 +105,7 @@ joblib.dump((scaler1, scaler2), os.path.join(model_dir, 'scalers.pkl'))
 # Training parameters
 max_epochs = 500
 patience = 20
-batch_size = 128
+batch_size = 64
 
 # ### Callbacks ###
 custom_csv_logger = CustomCSVLogger(os.path.join(performance_dir, 'training_log.csv'))
@@ -130,7 +131,7 @@ model = TabNetRegressor(
     scheduler_fn=torch.optim.lr_scheduler.OneCycleLR,  
     scheduler_params={
         'max_lr': 5e-4,
-        'total_steps': None,  
+        'total_steps': 1000,  
         'pct_start': 0.3,
         'div_factor': 25.0,
         'final_div_factor': 10000.0,
@@ -157,7 +158,7 @@ model.fit(
     patience=patience,
     batch_size=batch_size,
     virtual_batch_size=16,  
-    num_workers=16,  
+    num_workers=8,  
     drop_last=False,
     loss_fn=weighted_mse_loss,  
     from_unsupervised=None,
@@ -168,7 +169,7 @@ model.fit(
 )
 
 # # Save model
-# model.save_model(os.path.join(model_dir, 'tabnet_model'))
+model.save_model(os.path.join(model_dir, 'tabnet_model'))
 
 # Load best model for evaluation
 model.load_model(os.path.join(model_dir, 'tabnet_model.zip'))
