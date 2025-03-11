@@ -36,8 +36,8 @@ if physical_devices:
 tf.keras.backend.set_floatx('float32')
 
 # File paths and versioning
-data_path = find_file("Deuteron_Low_No_Noise_500K.csv")  
-version = 'Deuteron_Low_ResNet_V19_LogCosh'  
+data_path = find_file("Deuteron_Oversampled_1M.csv")  
+version = 'Deuteron_Low_ResNet_Polarizaion_Lineshape_Loss_Oversampled'  
 performance_dir = f"Model Performance/{version}"  
 model_dir = f"Models/{version}"  
 os.makedirs(performance_dir, exist_ok=True)
@@ -45,33 +45,32 @@ os.makedirs(model_dir, exist_ok=True)
 
 
 def residual_block(x, units):
-    shortcut = x
-    x = layers.Dense(units, activation='swish',  # Swish activation
-                     kernel_initializer="he_normal",
-                     kernel_regularizer=regularizers.l2(1e-5))(x)
-    x = layers.LayerNormalization()(x)
+    y = layers.Dense(units, activation=None, kernel_initializer=initializers.GlorotNormal(),kernel_regularizer=regularizers.l2(0.01))(x)
+    y = layers.BatchNormalization()(y)
+    y = layers.Activation('swish')(y)
+    y = layers.Dense(units, activation=None, kernel_initializer=initializers.GlorotNormal(),kernel_regularizer=regularizers.l2(0.01))(y)
+    y = layers.BatchNormalization()(y)
+
+    # Residual connection
+    if x.shape[-1] != units:
+        x = layers.Dense(units, kernel_initializer=initializers.GlorotNormal(),kernel_regularizer=regularizers.l2(0.01))(x)
     
-    if shortcut.shape[-1] != units:
-        shortcut = layers.Dense(units, kernel_initializer="he_normal")(shortcut)
-        
-    x = layers.Add()([x, shortcut])
+    # Add skip connection
+    x = layers.Add()([x, y])
+    x = layers.Activation('swish')(x)
+    x = layers.Dropout(0.25)(x)
     return x
 
 def Polarization():
     inputs = layers.Input(shape=(500,), dtype='float32')
     
-    # x = layers.Dense(512, activation=tf.nn.silu,
-    #                 kernel_initializer=initializers.HeNormal())(inputs)
     x = layers.LayerNormalization()(inputs)
     
-    units = [256, 128, 128, 64, 32]
+    units = [256, 128, 64, 32]
     for u in units:
         x = residual_block(x, u)
-    
-    x = layers.Dense(64, activation='swish',
-                    kernel_initializer=initializers.GlorotNormal())(x)
-    outputs = layers.Dense(1, activation='linear',
-                          kernel_initializer=initializers.RandomNormal(stddev=1e-4))(x)
+        
+    outputs = layers.Dense(1, activation='linear', kernel_initializer=initializers.GlorotNormal())(x)
     
     model = tf.keras.Model(inputs=inputs, outputs=outputs)
     
@@ -86,7 +85,7 @@ def Polarization():
     
     model.compile(
         optimizer=optimizer,
-        loss=log_cosh_precision_loss,
+        loss=Polarization_Lineshape_Loss,
         metrics=[tf.keras.metrics.MeanAbsoluteError(name='mae')]
     )
     return model
@@ -148,8 +147,8 @@ model = Polarization()
 history = model.fit(
     X_train, y_train,
     validation_data=(X_val, y_val),
-    epochs=100,
-    batch_size=256,  
+    epochs=1000,
+    batch_size=32,  
     callbacks=callbacks_list,
     verbose=2
 )
@@ -160,10 +159,10 @@ residuals = y_test - y_test_pred
 rpe = np.abs((y_test - y_test_pred) / np.abs(y_test)) * 100  
 
 ### Plotting the results
-# plot_rpe_and_residuals_over_range(y_test, y_test_pred, performance_dir, version)
 
 plot_rpe_and_residuals(y_test, y_test_pred, performance_dir, version)
 
+plot_enhanced_results(y_test, y_pred, performance_dir, version)
 
 plot_training_history(history, performance_dir, version)
 
@@ -171,7 +170,8 @@ event_results_file = os.path.join(performance_dir, f'test_event_results_{version
 test_results_df = pd.DataFrame({
     'Actual': y_test.round(6),
     'Predicted': y_test_pred.round(6),
-    'Residuals': residuals.round(6)
+    'Residuals': residuals.round(6),
+    'RPE' : rpe.round(6)
 })
 test_results_df.to_csv(event_results_file, index=False)
 
