@@ -4,31 +4,31 @@ OPTIMIZATION RESULTS
 
 OPTIMIZED PARAMETERS:
 --------------------------------------------------
-Parameter 1: 0.0004 = 0.00033000
-Parameter 2: 0.0004222222222222 = 0.00047000
-Parameter 3: 0.0004444444444444 = 0.00041000
-Parameter 4: 0.0004666666666666 = 0.00048200
-Parameter 5: 0.0004888888888888 = 0.00049430
-Parameter 6: 0.0005111111111111 = 0.00050600
-Parameter 7: 0.0005333333333333 = 0.00051800
-Parameter 8: 0.0005555555555555 = 0.00053000
-Parameter 9: 0.0005777777777777 = 0.00057000
-Parameter 10: 0.0006 = 0.00057000
+Parameter 1: 0.0004 | 0.00036830
+Parameter 2: 0.0004222222222222 | 0.00038200
+Parameter 3: 0.0004444444444444 | 0.00041000
+Parameter 4: 0.0004666666666666 | 0.00048200
+Parameter 5: 0.0004888888888888 | 0.00049430
+Parameter 6: 0.0005111111111111 | 0.00050600
+Parameter 7: 0.0005333333333333 | 0.00051800
+Parameter 8: 0.0005555555555555 | 0.00063000
+Parameter 9: 0.0005777777777777 | 0.00057000
+Parameter 10: 0.0006 | 0.00057000
 --------------------------------------------------
 
 RESIDUALS (P_true - P_optimized):
 --------------------------------------------------
 Parameter 1: 0.0004
     True value:      0.00040000
-    Optimized value: 0.00033000
-    Residual:        0.00007000
-    Percent error:   17.5000%
+    Optimized value: 0.00036830
+    Residual:        0.00003170
+    Percent error:   7.9250%
 
 Parameter 2: 0.0004222222222222
     True value:      0.00042222
-    Optimized value: 0.00047000
-    Residual:        -0.00004778
-    Percent error:   -11.3158%
+    Optimized value: 0.00038200
+    Residual:        0.00004022
+    Percent error:   9.5263%
 
 Parameter 3: 0.0004444444444444
     True value:      0.00044444
@@ -62,9 +62,9 @@ Parameter 7: 0.0005333333333333
 
 Parameter 8: 0.0005555555555555
     True value:      0.00055556
-    Optimized value: 0.00053000
-    Residual:        0.00002556
-    Percent error:   4.6000%
+    Optimized value: 0.00063000
+    Residual:        -0.00007444
+    Percent error:   -13.4000%
 
 Parameter 9: 0.0005777777777777
     True value:      0.00057778
@@ -84,35 +84,35 @@ COVARIANCE MATRICES:
 --------------------------------------------------
 
 Matrix 1 (Parameter: 0.0004):
-    2.4202e-05
+    3.3545e-05
 
 Matrix 2 (Parameter: 0.0004222222222222):
-    5.4673e-05
+    2.2823e-05
 
 Matrix 3 (Parameter: 0.0004444444444444):
-    2.6322e-05
+    2.4650e-05
 
 Matrix 4 (Parameter: 0.0004666666666666):
-    2.2302e-05
+    2.7788e-05
 
 Matrix 5 (Parameter: 0.0004888888888888):
-    2.6909e-05
+    3.6117e-05
 
 Matrix 6 (Parameter: 0.0005111111111111):
-    2.6270e-05
+    3.4498e-05
 
 Matrix 7 (Parameter: 0.0005333333333333):
-    2.4988e-05
+    2.7546e-05
 
 Matrix 8 (Parameter: 0.0005555555555555):
-    2.5991e-05
+    4.3386e-05
 
 Matrix 9 (Parameter: 0.0005777777777777):
-    2.7852e-05
+    2.3996e-05
 
 Matrix 10 (Parameter: 0.0006):
-    2.4917e-05
+    2.9967e-05
 --------------------------------------------------
 
 
-File generated on: 2025-03-10 16:46:41
+File generated on: 2025-03-11 07:30:53

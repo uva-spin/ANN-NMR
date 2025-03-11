@@ -29,10 +29,10 @@ np.random.seed(seed_value)
 random.seed(seed_value)
 tf.random.set_seed(seed_value)
 
-version = 'varied_polarization_PI_Loss'
+version = 'Decoder_V2'
 
 # Number of points in lineshape
-samples = 100000
+samples = 1000000
 
 R = np.linspace(-3.5, 3.5, samples)
 
@@ -48,70 +48,79 @@ reference_P = 0.0005
 reference_X, _, _ = GenerateLineshape(reference_P, R)
 reference_X_log = np.log(reference_X)
 
-# Function to create and compile model
-# def create_model(errF):
-#     model = keras.Sequential([
-#         layers.Input(shape=(1,)),
-#         layers.Dense(256, activation=tf.nn.swish, kernel_regularizer=regularizers.l2(0.001)),
-#         layers.Dense(128, activation=tf.nn.swish, kernel_regularizer=regularizers.l2(0.001)),
-#         layers.Dense(64, activation=tf.nn.swish, kernel_regularizer=regularizers.l2(0.001)),
-#         layers.Dense(32, activation=tf.nn.swish, kernel_regularizer=regularizers.l2(0.001)),
-#         # Add a smaller layer here as a bottleneck
-#         layers.Dense(16, activation=tf.nn.swish, kernel_regularizer=regularizers.l2(0.001)),
-#         # Consider adding a dropout layer to prevent overfitting
-#         layers.Dropout(0.1),
-#         layers.Dense(1)
-#     ])
-
-def create_model(errF, input_shape=(1,)):
-
+def Decoder(errF, input_shape=(1,)):
     inputs = keras.Input(shape=input_shape)
     
-    x = layers.Dense(256, activation=None, kernel_regularizer=regularizers.l2(0.001))(inputs)
+    x = layers.Dense(256, activation=None, kernel_regularizer=regularizers.l2(0.01))(inputs)
     x = layers.BatchNormalization()(x)
     x = layers.Activation('swish')(x)
     
-    for units in [128, 64, 32]:
-
-        y = layers.Dense(units, activation=None, kernel_regularizer=regularizers.l2(0.001))(x)
+    expansion_units = [512, 1024, 2048, 5000]
+    for units in expansion_units:
+        y = layers.Dense(units, activation=None, kernel_regularizer=regularizers.l2(0.01))(x)
         y = layers.BatchNormalization()(y)
         y = layers.Activation('swish')(y)
-        y = layers.Dense(units, activation=None, kernel_regularizer=regularizers.l2(0.001))(y)
+        y = layers.Dense(units, activation=None, kernel_regularizer=regularizers.l2(0.01))(y)
         y = layers.BatchNormalization()(y)
         
+        # Residual connection
         if x.shape[-1] != units:
-            x = layers.Dense(units, kernel_regularizer=regularizers.l2(0.001))(x)
+            x = layers.Dense(units, kernel_regularizer=regularizers.l2(0.01))(x)
         
         # Add skip connection
         x = layers.Add()([x, y])
         x = layers.Activation('swish')(x)
-        x = layers.Dropout(0.1)(x)
+        x = layers.Dropout(0.25)(x)
     
-    # Final output layer
+    highest_dim_output = x
+    
+    reduction_units = [2048, 1024, 512, 256, 128, 64, 32]
+    for units in reduction_units:
+        y = layers.Dense(units, activation=None, kernel_regularizer=regularizers.l2(0.01))(x)
+        y = layers.BatchNormalization()(y)
+        y = layers.Activation('swish')(y)
+        y = layers.Dense(units, activation=None, kernel_regularizer=regularizers.l2(0.01))(y)
+        y = layers.BatchNormalization()(y)
+        
+        if x.shape[-1] != units:
+            x = layers.Dense(units, kernel_regularizer=regularizers.l2(0.01))(x)
+        
+        x = layers.Add()([x, y])
+        x = layers.Activation('swish')(x)
+        x = layers.Dropout(0.25)(x)
+        
+        if units == 256:  # At a middle point, add a long skip connection
+            z = layers.Dense(units, kernel_regularizer=regularizers.l2(0.01))(highest_dim_output)
+            x = layers.Add()([x, z])
+            x = layers.Activation('swish')(x)
+    
     outputs = layers.Dense(1)(x)
     
     model = keras.Model(inputs=inputs, outputs=outputs)
     
     def Loss(y_true, y_pred, errF):
+        # Add small epsilon to prevent division by zero
+        eps = 1e-8
         errF = tf.convert_to_tensor(errF, dtype=tf.float32)
         squared_diff = tf.square(y_true - y_pred)
         
-        # Basic binned MSE
-        basic_loss = tf.reduce_mean(squared_diff / tf.square(errF))
+        # Add epsilon to prevent division by very small numbers
+        basic_loss = tf.reduce_mean(squared_diff / (tf.square(errF) + eps))
         
-        batch_size = tf.shape(y_true)[0]
-        y_true_reshaped = tf.reshape(y_true, (batch_size,))
-        y_pred_reshaped = tf.reshape(y_pred, (batch_size,))
+        # batch_size = tf.shape(y_true)[0]
+        # y_true_reshaped = tf.reshape(y_true, (batch_size,))
+        # y_pred_reshaped = tf.reshape(y_pred, (batch_size,))
 
-        gradient_true = y_true_reshaped[1:] - y_true_reshaped[:-1]
-        gradient_pred = y_pred_reshaped[1:] - y_pred_reshaped[:-1]
-        shape_penalty = tf.reduce_mean(tf.square(gradient_true - gradient_pred))
+        # gradient_true = y_true_reshaped[1:] - y_true_reshaped[:-1]
+        # gradient_pred = y_pred_reshaped[1:] - y_pred_reshaped[:-1]
+        # shape_penalty = tf.reduce_mean(tf.square(gradient_true - gradient_pred))
         
-        non_negative_penalty = tf.reduce_mean(tf.maximum(tf.constant(0, dtype=tf.float32), -y_pred))
+        # non_negative_penalty = tf.reduce_mean(tf.maximum(tf.constant(0, dtype=tf.float32), -y_pred))
         
-        area_penalty = tf.square(tf.reduce_sum(y_true) - tf.reduce_sum(y_pred))
+        # area_penalty = tf.square(tf.reduce_sum(y_true) - tf.reduce_sum(y_pred))
         
-        return basic_loss + 0.1 * shape_penalty + 0.01 * non_negative_penalty + 0.01 * area_penalty
+        # return 0.1 * shape_penalty + 0.1 * non_negative_penalty + 0.1 * area_penalty
+        return basic_loss
 
     def PI_Loss(errF):
         def loss(y_true, y_pred):
@@ -127,12 +136,25 @@ def create_model(errF, input_shape=(1,)):
         y_true_exp = tf.exp(y_true_flat)
         y_pred_exp = tf.exp(y_pred_flat)
         
+        
         # Normalize both curves for shape comparison
         y_true_sum = tf.reduce_sum(y_true_exp) + tf.keras.backend.epsilon()
         y_pred_sum = tf.reduce_sum(y_pred_exp) + tf.keras.backend.epsilon()
         
         y_true_norm = y_true_exp / y_true_sum
         y_pred_norm = y_pred_exp / y_pred_sum
+        
+        # tf.print(f"True Norm:{y_true_norm} \t Predicted Norm:{y_pred_norm}\n")
+        
+        # print("True Lineshape:",y_true_exp)
+        # print("Predicted Lineshape:", y_pred_exp)
+        
+        # print("True Norm:",y_true_norm)
+        # print("Predicted Normal:", y_pred_norm)
+        
+        # print("Reduced Mean:", tf.reduce_mean(tf.abs(y_true_norm - y_pred_norm)))
+        
+        # tf.print(f"Reduced Mean: {tf.reduce_mean(tf.abs(y_true_norm-y_pred_norm))}\n")
         
         similarity = 1.0 - tf.reduce_mean(tf.abs(y_true_norm - y_pred_norm))
         return similarity
@@ -162,7 +184,7 @@ all_models = []
 all_true_lineshapes = []
 predicted_lineshapes = []
 
-models_dir = os.path.join(current_dir, 'varied_p_models')
+models_dir = os.path.join(current_dir, 'Decoder_Models')
 os.makedirs(models_dir, exist_ok=True)
 
 for i, p_value in enumerate(tqdm(P_values, desc="Training models")):
@@ -177,7 +199,7 @@ for i, p_value in enumerate(tqdm(P_values, desc="Training models")):
     _, errF, _ = calculate_binned_errors(X_log_reshaped, num_bins=10000)
     
     
-    model = create_model(errF)
+    model = Decoder(errF)
     
     lr_scheduler = LearningRateScheduler(cosine_decay_with_warmup)
     early_stopping = tf.keras.callbacks.EarlyStopping(
@@ -201,14 +223,14 @@ for i, p_value in enumerate(tqdm(P_values, desc="Training models")):
     history = model.fit(
         R_reshaped, X_log_reshaped,
         epochs=100,  
-        batch_size=32,
+        batch_size=256,
         validation_split=0.2,
         callbacks=[early_stopping, lr_scheduler, reduce_lr],
         verbose=1
     )
     
     # Save the model
-    model_path = os.path.join(models_dir, f'model_p_{p_value:.7f}.keras')
+    model_path = os.path.join(models_dir, f'Decoder_model_{version}.keras')
     model.save(model_path)
     all_models.append(model)
     
@@ -225,7 +247,7 @@ for i, p_value in enumerate(tqdm(P_values, desc="Training models")):
     
 df = pd.DataFrame(all_predictions)
 df["P_true"] = P_values
-csv_path = os.path.join(current_dir, f'predictions_p_{p_value:.7f}.csv')
+csv_path = os.path.join(current_dir, f'Decoder_predictions_{version}.csv')
 df.to_csv(csv_path, index=False)
 
 print(f"Saved predictions for P = {p_value:.7f} to {csv_path}")
@@ -252,29 +274,29 @@ plt.legend(loc='upper left', bbox_to_anchor=(1, 1))
 plt.grid(True, alpha=0.3)
 plt.tight_layout()
 
-plot_path = os.path.join(current_dir, 'polarization_variation_comparison.png')
+plot_path = os.path.join(current_dir, 'Decoder_Comparison.png')
 plt.savefig(plot_path, dpi=300, bbox_inches='tight')
 # plt.show()
 
 print(f"Comparison plot saved to {plot_path}")
 
-summary_data = {
-    'P_value': P_values,
-    'Model_path': [os.path.join(models_dir, f'model_p_{p:.7f}.keras') for p in P_values],
-    'Predictions_path': [os.path.join(current_dir, f'predictions_p_{p:.7f}.csv') for p in P_values]
-}
+# summary_data = {
+#     'P_value': P_values,
+#     'Model_path': [os.path.join(models_dir, f'model_p_{p:.7f}.keras') for p in P_values],
+#     'Predictions_path': [os.path.join(current_dir, f'predictions_p_{p:.7f}.csv') for p in P_values]
+# }
 
-summary_df = pd.DataFrame(summary_data)
-summary_path = os.path.join(current_dir, 'polarization_variation_summary.csv')
-summary_df.to_csv(summary_path, index=False)
+# summary_df = pd.DataFrame(summary_data)
+# summary_path = os.path.join(current_dir, 'Decoder_Summary.csv')
+# summary_df.to_csv(summary_path, index=False)
 
-print(f"Summary information saved to {summary_path}")
-print(f"Completed analysis of {num_steps} P values between {P_values[0]:.7f} and {P_values[-1]:.7f}")
+# print(f"Summary information saved to {summary_path}")
+# print(f"Completed analysis of {num_steps} P values between {P_values[0]:.7f} and {P_values[-1]:.7f}")
 
-df = pd.read_csv(os.path.join(current_dir, 'Lineshape_Predictions.csv'))
+# df = pd.read_csv(os.path.join(current_dir, 'Decoder_Lineshape_Predictions.csv'))
 
-predictions = df.drop(columns=["P_true"]).values
-P_values = df["P_true"].values
+# predictions = df.drop(columns=["P_true"]).values
+# P_values = df["P_true"].values
 
 def Baseline(x, P):
     Sig, _, _ = GenerateLineshape(P, x)
@@ -282,7 +304,7 @@ def Baseline(x, P):
 
 X = np.linspace(-3, 3, 10000)
 
-initial_params = [0.0004183, 0.000432, 0.00046, 0.000532, 0.0005443, 0.000556, 0.000568, 0.00058, 0.00062, 0.00062]
+initial_params = [0.0004183, 0.000432, 0.00046, 0.000532, 0.0005443, 0.000556, 0.000568, 0.00058, 0.000594, 0.000612]
 
 lower_bounds = [p - 0.00005 for p in initial_params]
 upper_bounds = [p + 0.00005 for p in initial_params]
@@ -368,12 +390,12 @@ plt.grid(alpha=0.3)
 plt.legend()
 
 # Save histogram with Gaussian fit
-histogram_path = os.path.join(current_dir, "residuals_histogram_NN_with_gaussian.png")
+histogram_path = os.path.join(current_dir, f"residuals_histogram_Decoder_with_gaussian_{version}.png")
 plt.savefig(histogram_path)
 plt.close()
 
 # Save results to a file
-def save_results_to_file(P_true=None, filename="optimization_results_NN.txt"):
+def save_results_to_file(P_true=None, filename="optimization_results_Decoder.txt"):
     with open(filename, 'w') as f:
         # Write header
         f.write("="*50 + "\n")
@@ -442,4 +464,4 @@ def save_results_to_file(P_true=None, filename="optimization_results_NN.txt"):
     print(f"Results saved to '{filename}'")
 
 
-save_results_to_file(P_true = P_values, filename=os.path.join(current_dir, "NN_Optimization_Results.txt"))
+save_results_to_file(P_true = P_values, filename=os.path.join(current_dir, f"Decoder_Optimization_Results_{version}.txt"))
