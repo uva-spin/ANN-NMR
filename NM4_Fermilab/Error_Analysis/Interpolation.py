@@ -41,27 +41,11 @@ P_center = 0.0005
 P_range = 0.0001
 num_steps = 10
 P_values = np.linspace(P_center - P_range, P_center + P_range, num_steps)
-# P_values = np.array([0.000543])
 
 # Generate the reference lineshape at P = 0.0005
 reference_P = 0.0005
 reference_X, _, _ = GenerateLineshape(reference_P, R)
 reference_X_log = np.log(reference_X)
-
-# Function to create and compile model
-# def create_model(errF):
-#     model = keras.Sequential([
-#         layers.Input(shape=(1,)),
-#         layers.Dense(256, activation=tf.nn.swish, kernel_regularizer=regularizers.l2(0.001)),
-#         layers.Dense(128, activation=tf.nn.swish, kernel_regularizer=regularizers.l2(0.001)),
-#         layers.Dense(64, activation=tf.nn.swish, kernel_regularizer=regularizers.l2(0.001)),
-#         layers.Dense(32, activation=tf.nn.swish, kernel_regularizer=regularizers.l2(0.001)),
-#         # Add a smaller layer here as a bottleneck
-#         layers.Dense(16, activation=tf.nn.swish, kernel_regularizer=regularizers.l2(0.001)),
-#         # Consider adding a dropout layer to prevent overfitting
-#         layers.Dropout(0.1),
-#         layers.Dense(1)
-#     ])
 
 def create_model(errF, input_shape=(1,)):
 
@@ -169,7 +153,7 @@ for i, p_value in enumerate(tqdm(P_values, desc="Training models")):
     print(f"\nTraining model {i+1}/{num_steps} with P = {p_value:.7f}")
     
     X, _, _ = GenerateLineshape(p_value, R)
-    X_log = np.log(X)
+    X_log = np.log(X) + np.random.normal(0, 0.1, size=X.shape)
     
     X_log_reshaped = X_log
     

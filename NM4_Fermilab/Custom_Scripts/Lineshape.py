@@ -618,8 +618,8 @@ def GenerateLineshapeTensor(P, x):
     r_expanded = tf.expand_dims(r, -1)
     
     # Calculate signal components
-    Iplus = r_expanded * icurve(x, 1) / 10.0
-    Iminus = icurve(x, -1) / 10.0
+    Iplus = r_expanded * icurve(x, 1) 
+    Iminus = icurve(x, -1) 
     signal = Iplus + Iminus
     
     return signal

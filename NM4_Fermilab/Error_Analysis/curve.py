@@ -230,7 +230,6 @@ def perform_lineshape_fitting(output_dir=None, polarization_center=0.0005, polar
         "histogram_file": histogram_path
     }
 
-# Example usage
 if __name__ == "__main__":
     # Set the output directory to be the same as the script directory
     script_dir = os.path.dirname(os.path.abspath(__file__))

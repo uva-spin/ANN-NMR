@@ -64,8 +64,8 @@ device = 'cuda' if torch.cuda.is_available() else 'cpu'
 print(f"Using device: {device}")
 
 # File paths and versioning
-data_path = find_file("Deuteron_Low_No_Noise_500K.csv") 
-version = f'Deuteron_TabNet_V2'
+data_path = find_file("Deuteron_Oversampled_500K.csv") 
+version = f'Deuteron_TabNet_V1_Oversampled_Low'
 performance_dir = f"Model_Performance/{version}"
 model_dir = f"Models/{version}"
 os.makedirs(performance_dir, exist_ok=True)
@@ -73,35 +73,47 @@ os.makedirs(model_dir, exist_ok=True)
 
 # Data loading and preprocessing
 print("Loading data...")
-data = pd.read_csv(data_path)
-
+try:
+    data = pd.read_csv(data_path)
+except FileNotFoundError:
+    print(f"Error: File {data_path} not found.")
+    sys.exit(1)
+except Exception as e:
+    print(f"Error: {e}")
+    sys.exit(1)
+print(f"Data loaded successfully from {data_path}")
 # Data splitting
+print("Splitting data...")
 data['P_bin'] = pd.qcut(data['P'], q=10, labels=False)
 train_data, temp_data = train_test_split(data, test_size=0.3, random_state=42, stratify=data['P_bin'])
 val_data, test_data = train_test_split(temp_data, test_size=1/3, random_state=42, stratify=temp_data['P_bin'])
-
+print("Data split successfully")
 # Prepare features and targets
+print("Preparing features and targets...")
 X_train = train_data.drop(columns=["P", 'SNR', 'P_bin']).values.astype(np.float32)
 y_train = train_data["P"].values.astype(np.float32).reshape(-1, 1)
 X_val = val_data.drop(columns=["P", 'SNR', 'P_bin']).values.astype(np.float32)
 y_val = val_data["P"].values.astype(np.float32).reshape(-1, 1)
 X_test = test_data.drop(columns=["P", 'SNR', 'P_bin']).values.astype(np.float32)
 y_test = test_data["P"].values.astype(np.float32).reshape(-1, 1)
-
+print("Features and targets prepared successfully")
 # Normalization
+print("Normalizing data...")
 scaler1 = RobustScaler().fit(X_train)
 X_train_robust = scaler1.transform(X_train)
 X_val_robust = scaler1.transform(X_val)
 X_test_robust = scaler1.transform(X_test)
-
-scaler2 = PowerTransformer(method='yeo-johnson').fit(X_train_robust)
-X_train = scaler2.transform(X_train_robust).astype(np.float32)
-X_val = scaler2.transform(X_val_robust).astype(np.float32)
-X_test = scaler2.transform(X_test_robust).astype(np.float32)
-
+print("Data normalized successfully")
+# scaler2 = PowerTransformer(method='yeo-johnson').fit(X_train_robust)
+# X_train = scaler2.transform(X_train_robust).astype(np.float32)
+# X_val = scaler2.transform(X_val_robust).astype(np.float32)
+# X_test = scaler2.transform(X_test_robust).astype(np.float32)
+# print("Data transformed successfully")  
 # Save scalers
-joblib.dump((scaler1, scaler2), os.path.join(model_dir, 'scalers.pkl'))
-
+print("Saving scalers...")
+joblib.dump(scaler1, os.path.join(model_dir, 'scaler1.pkl'))
+# joblib.dump(scaler2, os.path.join(model_dir, 'scaler2.pkl'))
+print("Scalers saved successfully")
 # Training parameters
 max_epochs = 500
 patience = 20
@@ -112,6 +124,7 @@ custom_csv_logger = CustomCSVLogger(os.path.join(performance_dir, 'training_log.
 
 
 # TabNet model configuration
+print("Configuring TabNet model...")
 model = TabNetRegressor(
     input_dim=500,
     output_dim=1,
@@ -137,6 +150,7 @@ model = TabNetRegressor(
         'final_div_factor': 10000.0,
     }
 )
+print("TabNet model configured successfully")
 # Train the model
 def weighted_mse_loss(pred, target):
     error = pred - target
@@ -165,20 +179,21 @@ model.fit(
     augmentations=None,
     weights=0,
     warm_start=False,
-    callbacks=[custom_csv_logger]
-)
-
+    callbacks=[custom_csv_logger])
+print("Model trained successfully")
 # # Save model
+print("Saving model...")
 model.save_model(os.path.join(model_dir, 'tabnet_model'))
-
+print("Model saved successfully")
 # Load best model for evaluation
+print("Loading best model...")
 model.load_model(os.path.join(model_dir, 'tabnet_model.zip'))
-
+print("Best model loaded successfully")
 # Evaluate on test set
 print("Evaluating model...")
 y_pred = model.predict(X_test)
 residuals = y_test.flatten() - y_pred.flatten()
-
+print("Model evaluated successfully")
 # Calculate metrics
 mae = np.mean(np.abs(residuals))*100
 rmse = np.sqrt(np.mean(residuals**2))*100

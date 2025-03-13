@@ -32,18 +32,14 @@ def plot_rpe_and_residuals_over_range(y_true, y_pred, performance_dir, version):
         # Calculate metrics
         residuals = y_true_range - y_pred_range
         rpe = np.abs((residuals / y_true_range)) * 100  # Relative Percent Error
-        mae = np.mean(np.abs(residuals))
-        mse = np.mean(residuals**2)
+        mean_res = np.mean(residuals)
+        std_res = np.std(residuals)
 
         # Create subplot for histogram of residuals using Seaborn
         ax = plt.subplot(2, 3, valid_bins)  # Use valid_bins for positioning
         sns.histplot(residuals, bins=30, kde=True, stat="density", color='blue', edgecolor='black', ax=ax, alpha=0.6)
         
-        # Fit a Gaussian to the residuals data
-        mu_res, sigma_res = norm.fit(residuals)
-        x = np.linspace(min(residuals), max(residuals), 100)
-        y_res = norm.pdf(x, mu_res, sigma_res)
-        ax.plot(x, y_res, '--', color='red', linewidth=2, label=f'Gaussian Fit: μ={mu_res:.6f}, σ={sigma_res:.6f}')
+
 
         # Set titles and labels for residuals histogram
         ax.set_title(f'Residuals Histogram: {lower*100:.6f}% to {upper*100:.6f}%', fontsize=16)
@@ -164,7 +160,8 @@ def plot_rpe_and_residuals(y_true, y_pred, performance_dir, version, figsize=(18
     Plots comprehensive performance metrics including Relative Percent Error (RPE), 
     residuals, and prediction vs actual for given true and predicted values.
     Also creates a separate focused histogram of RPE for data points where y_true is 
-    around 0.05% ± 0.01%.
+    around 0.05% ± 0.01% and a 3D histogram showing RPE distribution across true values.
+    Displays mean and standard deviation statistics without Gaussian fits.
 
     Parameters:
     - y_true: Array of true values.
@@ -251,15 +248,18 @@ def plot_rpe_and_residuals(y_true, y_pred, performance_dir, version, figsize=(18
     sns.histplot(results_df['Residuals'], bins=30, kde=True, stat="density", 
                 color=colors[2], edgecolor='black', alpha=0.6, ax=ax2)
     
-    # Fit and plot normal distribution
-    try:
-        mu_res, sigma_res = norm.fit(results_df['Residuals'])
-        x_res = np.linspace(results_df['Residuals'].min(), results_df['Residuals'].max(), 100)
-        y_res = norm.pdf(x_res, mu_res, sigma_res)
-        ax2.plot(x_res, y_res, '--', color='red', linewidth=2, 
-                label=f'Gaussian Fit: μ={mu_res:.6f}, σ={sigma_res:.6f}')
-    except:
-        pass  # Handle if normal fit fails
+    # Calculate and display mean and standard deviation
+    residuals_mean = results_df['Residuals'].mean()
+    residuals_std = results_df['Residuals'].std()
+    
+    # Add vertical line at the mean
+    ax2.axvline(x=residuals_mean, color='red', linestyle='-', linewidth=1.5, 
+               label=f'Mean: {residuals_mean:.6f}')
+    
+    # Shade the range within ±1 standard deviation
+    ax2.axvspan(residuals_mean - residuals_std, residuals_mean + residuals_std, 
+               alpha=0.2, color='red', 
+               label=f'±1σ: [{residuals_mean-residuals_std:.6f}, {residuals_mean+residuals_std:.6f}]')
     
     ax2.set_title('Residuals Distribution', fontsize=14, fontweight='bold')
     ax2.set_xlabel('Residuals', fontsize=12)
@@ -272,15 +272,18 @@ def plot_rpe_and_residuals(y_true, y_pred, performance_dir, version, figsize=(18
     sns.histplot(results_df['RPE'], bins=30, kde=True, stat="density", 
                 color=colors[3], edgecolor='black', alpha=0.6, ax=ax3)
     
-    # Fit and plot normal distribution
-    try:
-        mu_rpe, sigma_rpe = norm.fit(results_df['RPE'])
-        x_rpe = np.linspace(results_df['RPE'].min(), results_df['RPE'].max(), 100)
-        y_rpe = norm.pdf(x_rpe, mu_rpe, sigma_rpe)
-        ax3.plot(x_rpe, y_rpe, '--', color='orange', linewidth=2, 
-                label=f'Gaussian Fit: μ={mu_rpe:.6f}, σ={sigma_rpe:.6f}')
-    except:
-        pass  # Handle if normal fit fails
+    # Calculate and display mean and standard deviation
+    rpe_mean = results_df['RPE'].mean()
+    rpe_std = results_df['RPE'].std()
+    
+    # Add vertical line at the mean
+    ax3.axvline(x=rpe_mean, color='orange', linestyle='-', linewidth=1.5, 
+               label=f'Mean: {rpe_mean:.6f}')
+    
+    # Shade the range within ±1 standard deviation
+    ax3.axvspan(rpe_mean - rpe_std, rpe_mean + rpe_std, 
+               alpha=0.2, color='orange', 
+               label=f'±1σ: [{rpe_mean-rpe_std:.6f}, {rpe_mean+rpe_std:.6f}]')
     
     ax3.set_title('RPE Distribution', fontsize=14, fontweight='bold')
     ax3.set_xlabel('Relative Percent Error (%)', fontsize=12)
@@ -361,7 +364,7 @@ def plot_rpe_and_residuals(y_true, y_pred, performance_dir, version, figsize=(18
     metrics_df.to_csv(metrics_path, index=False)
     print(f"Performance metrics saved to {metrics_path}")
     
-    # MODIFIED CODE: Create a separate histogram for RPE where y_true is around 0.05% ± 0.01%
+    # Create a separate histogram for RPE where y_true is around 0.05% ± 0.01%
     target_true = 0.05  # 0.05%
     range_true = 0.01   # 0.01%
     
@@ -377,27 +380,21 @@ def plot_rpe_and_residuals(y_true, y_pred, performance_dir, version, figsize=(18
         ax = sns.histplot(filtered_df['Percentage_Error'], bins=50, kde=True, stat="density", 
                          color="#3498db", edgecolor='black', alpha=0.7)
         
-        # Fit a normal distribution to the data
-        try:
-            mu, sigma = norm.fit(filtered_df['Percentage_Error'])
-            x = np.linspace(filtered_df['Percentage_Error'].min(), filtered_df['Percentage_Error'].max(), 100)
-            y = norm.pdf(x, mu, sigma)
-            plt.plot(x, y, '--', color='red', linewidth=2, 
-                    label=f'Gaussian Fit:\nμ={mu:.8f}%\nσ={sigma:.8f}%')
-            
-            # Add vertical line at the mean
-            plt.axvline(x=mu, color='green', linestyle='-', linewidth=1.5, 
-                       label=f'Mean: {mu:.8f}%')
-            
-            # Shade the range within ±1 sigma
-            plt.axvspan(mu - sigma, mu + sigma, alpha=0.2, color='green', 
-                       label=f'±1σ: [{mu-sigma:.8f}%, {mu+sigma:.8f}%]')
-            
-            # Add vertical line at zero (perfect prediction)
-            plt.axvline(x=0, color='red', linestyle='--', linewidth=1.5,
-                       label='Perfect Prediction (0%)')
-        except Exception as e:
-            print(f"Warning: Could not fit normal distribution to focused percentage error data: {e}")
+        # Calculate mean and standard deviation
+        mu = filtered_df['Percentage_Error'].mean()
+        sigma = filtered_df['Percentage_Error'].std()
+        
+        # Add vertical line at the mean
+        plt.axvline(x=mu, color='green', linestyle='-', linewidth=1.5, 
+                   label=f'Mean: {mu:.8f}%')
+        
+        # Shade the range within ±1 sigma
+        plt.axvspan(mu - sigma, mu + sigma, alpha=0.2, color='green', 
+                   label=f'±1σ: [{mu-sigma:.8f}%, {mu+sigma:.8f}%]')
+        
+        # Add vertical line at zero (perfect prediction)
+        plt.axvline(x=0, color='red', linestyle='--', linewidth=1.5,
+                   label='Perfect Prediction (0%)')
         
         # Add statistics annotation
         stats_text = (
@@ -431,6 +428,112 @@ def plot_rpe_and_residuals(y_true, y_pred, performance_dir, version, figsize=(18
     plt.savefig(focused_path, dpi=dpi, bbox_inches='tight')
     plt.close()
     print(f"Focused percentage error histogram for y_true ≈ {target_true}% saved to {focused_path}")
+    
+    # NEW ADDITION: Create a 3D histogram of RPE vs. True polarization values
+    fig = plt.figure(figsize=(12, 8))
+    ax = fig.add_subplot(111, projection='3d')
+    
+    # Define number of bins for the 3D histogram
+    true_bins = 20
+    rpe_bins = 20
+    
+    # Calculate the histogram
+    hist, x_edges, y_edges = np.histogram2d(
+        results_df['True'], 
+        results_df['RPE'], 
+        bins=[true_bins, rpe_bins]
+    )
+    
+    # Get the centers of the bins
+    x_centers = (x_edges[:-1] + x_edges[1:]) / 2
+    y_centers = (y_edges[:-1] + y_edges[1:]) / 2
+    
+    # Create a mesh grid for the 3D plot
+    X, Y = np.meshgrid(x_centers, y_centers)
+    
+    # Plot the 3D histogram as a surface
+    surf = ax.plot_surface(
+        X, Y, hist.T, 
+        cmap='viridis',
+        rstride=1, cstride=1, 
+        alpha=0.8, 
+        linewidth=0, 
+        antialiased=True
+    )
+    
+    # Add a color bar to show the mapping
+    colorbar = fig.colorbar(surf, ax=ax, shrink=0.7, aspect=10)
+    colorbar.set_label('Frequency', fontsize=12)
+    
+    # Set labels
+    ax.set_xlabel('True Polarization Values (%)', fontsize=12)
+    ax.set_ylabel('Relative Percent Error (%)', fontsize=12)
+    ax.set_zlabel('Frequency', fontsize=12)
+    
+    # Set title
+    ax.set_title('3D Distribution of RPE across True Polarization Values', fontsize=16, fontweight='bold')
+    
+    # Adjust the view angle for better visualization
+    ax.view_init(elev=30, azim=45)
+    
+    # Save the 3D histogram
+    plt.tight_layout()
+    plot3d_path = os.path.join(performance_dir, f'{version}_3D_RPE_Distribution.png')
+    plt.savefig(plot3d_path, dpi=dpi, bbox_inches='tight')
+    plt.close()
+    print(f"3D RPE distribution histogram saved to {plot3d_path}")
+    
+    # Alternative 2D heatmap visualization of the same data (often easier to interpret)
+    plt.figure(figsize=(12, 8))
+    
+    # Create pivot table for heatmap
+    heatmap_data = pd.DataFrame({
+        'True': results_df['True'],
+        'RPE': results_df['RPE'],
+        'Count': 1
+    })
+    
+    # Create bins for True values and RPE
+    true_bins_edges = np.linspace(results_df['True'].min(), results_df['True'].max(), 15)
+    rpe_bins_edges = np.linspace(results_df['RPE'].min(), results_df['RPE'].max(), 15)
+    
+    # Assign data points to bins
+    heatmap_data['True_bin'] = pd.cut(heatmap_data['True'], bins=true_bins_edges, labels=true_bins_edges[:-1])
+    heatmap_data['RPE_bin'] = pd.cut(heatmap_data['RPE'], bins=rpe_bins_edges, labels=rpe_bins_edges[:-1])
+    
+    # Create pivot table
+    pivot_data = heatmap_data.pivot_table(
+        values='Count', 
+        index='RPE_bin', 
+        columns='True_bin', 
+        aggfunc='count',
+        fill_value=0
+    )
+    
+    # Plot heatmap
+    sns.heatmap(
+        pivot_data, 
+        cmap='viridis', 
+        annot=False, 
+        fmt='d', 
+        linewidths=0,
+        cbar_kws={'label': 'Frequency'}
+    )
+    
+    plt.title('Heatmap of RPE Distribution across True Polarization Values', fontsize=16, fontweight='bold')
+    plt.xlabel('True Polarization Values (%)', fontsize=12)
+    plt.ylabel('Relative Percent Error (%)', fontsize=12)
+    
+    # Adjust tick frequency for readability
+    plt.xticks(rotation=45)
+    plt.yticks(rotation=0)
+    
+    # Save the heatmap
+    plt.tight_layout()
+    heatmap_path = os.path.join(performance_dir, f'{version}_RPE_Heatmap.png')
+    plt.savefig(heatmap_path, dpi=dpi, bbox_inches='tight')
+    plt.close()
+    print(f"RPE distribution heatmap saved to {heatmap_path}")
     
     return {
         'mae': mae,
@@ -470,7 +573,7 @@ def plot_enhanced_results(y_true, y_pred, output_dir, version_name):
     os.makedirs(output_dir, exist_ok=True)
     
     # Set seaborn style for better aesthetics
-    sns.set(style="whitegrid", context="paper", font_scale=1.2, 
+    sns.set_theme(style="whitegrid", context="paper", font_scale=1.2, 
             rc={"lines.linewidth": 2.5, "font.sans-serif": ['Arial', 'DejaVu Sans']})
     
     # Prepare data
@@ -524,12 +627,8 @@ def plot_enhanced_results(y_true, y_pred, output_dir, version_name):
     # Create a KDE plot for residuals
     sns.histplot(residuals, bins=100, kde=True, color=custom_palette[2], alpha=0.7, stat='density')
     
-    # Fit and plot Gaussian curve
     mean = np.mean(residuals)
     std_dev = np.std(residuals)
-    x = np.linspace(min(residuals), max(residuals), 1000)
-    pdf = norm.pdf(x, mean, std_dev)
-    plt.plot(x, pdf, linewidth=2.5, color=custom_palette[5], label='Gaussian Fit')
     
     # Add reference line
     plt.axvline(x=0, color='red', linestyle='--', alpha=0.8, linewidth=1.5, label='Zero Error')
@@ -599,12 +698,8 @@ def plot_enhanced_results(y_true, y_pred, output_dir, version_name):
     # Create a KDE plot for RPE
     sns.histplot(rpe_filtered, bins=100, kde=True, color=custom_palette[4], alpha=0.7, stat='density')
     
-    # Fit and plot Gaussian curve
     mean_rpe = np.mean(rpe_filtered)
     std_dev_rpe = np.std(rpe_filtered)
-    x_rpe = np.linspace(min(rpe_filtered), max(rpe_filtered), 1000)
-    pdf_rpe = norm.pdf(x_rpe, mean_rpe, std_dev_rpe)
-    plt.plot(x_rpe, pdf_rpe, linewidth=2.5, color=custom_palette[8], label='Gaussian Fit')
     
     # Enhance aesthetics
     plt.xlabel('Relative Percentage Error (%)', fontsize=12, fontweight='bold')

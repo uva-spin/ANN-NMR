@@ -19,7 +19,7 @@ module purge
 module load miniforge/24.3.0-py3.11
 
 # Set working directory and create output directories
-PROJECT_DIR="/project/ptgroup/Devin/Neural_Network" ### Change this to your own directory
+PROJECT_DIR="/project/ptgroup/Devin/NMR_Final/Testing" ### Change this to your own directory
 SCRIPT_DIR="${PROJECT_DIR}/scripts"
 OUTPUT_DIR="${PROJECT_DIR}/Training_Data_$(date +%Y%m%d)"
 

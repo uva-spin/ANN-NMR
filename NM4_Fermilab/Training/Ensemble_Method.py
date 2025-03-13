@@ -82,7 +82,7 @@ def residual_block(x, units):
     x = layers.Dense(units, activation='swish',  # Swish activation
                      kernel_initializer="he_normal",
                      kernel_regularizer=regularizers.l2(1e-5))(x)
-    x = layers.LayerNormalization()(x)
+    x = layers.BatchNormalization()(x)
     
     if shortcut.shape[-1] != units:
         shortcut = layers.Dense(units, kernel_initializer="he_normal")(shortcut)
@@ -93,9 +93,9 @@ def residual_block(x, units):
 def Polarization():
     inputs = layers.Input(shape=(500,), dtype='float32')
     
-    # x = layers.Dense(512, activation=tf.nn.silu,
-    #                 kernel_initializer=initializers.HeNormal())(inputs)
-    x = layers.LayerNormalization()(inputs)
+    x = layers.Dense(512, activation=tf.nn.silu,
+                    kernel_initializer=initializers.HeNormal())(inputs)
+    x = layers.BatchNormalization()(x)
     
     units = [128, 64, 32]
     for u in units:

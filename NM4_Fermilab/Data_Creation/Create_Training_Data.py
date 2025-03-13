@@ -1,11 +1,11 @@
-import numpy as np
-import pandas as pd
-from scipy.integrate import quad
-from tqdm import tqdm
+#!/usr/bin/env python3
 import os
 import sys
+import argparse
+import numpy as np
+import pandas as pd
+from tqdm import tqdm
 import logging
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from Custom_Scripts.Lineshape import *
 
 class SignalGenerator:
@@ -20,9 +20,18 @@ class SignalGenerator:
     def __init__(self, 
                  mode="deuteron",
                  output_dir="Training_Data", 
-                 num_samples=10,
+                 num_samples=1000,
                  add_noise=False,
-                 noise_level=0.000002):
+                 noise_level=0.000002,
+                 oversampling=False,
+                 oversampled_value=0.0005,
+                 oversampling_upper_bound=0.0006,
+                 oversampling_lower_bound=0.0004,
+                 upper_bound=0.6,
+                 lower_bound=0.1,
+                 p_max=0.6,
+                 alpha=2.0,
+                 baseline=True):
         """
         Initialize the SignalGenerator with configuration parameters.
         
@@ -38,12 +47,39 @@ class SignalGenerator:
             Whether to add noise to the signals
         noise_level : float
             Standard deviation of the Gaussian noise
+        oversampling : bool
+            whether or not to oversample around a certain value (i.e., TE)
+        oversampled_value : float
+            The value around which to oversample
+        oversampling_upper_bound : float
+            upper bound of value around which you want to oversample
+        oversampling_lower_bound : float
+            lower bound of value around which you want to oversample
+        upper_bound : float
+            Upper bound of P value (not oversampled)
+        lower_bound : float
+            Lower bound of P value (not oversampled)
+        p_max : float
+            Maximum polarization value that can be sampled (outside oversampling range)
+        alpha : float
+            Decay rate for power law distribution that samples P's outside oversampling range
+        baseline : bool
+            Whether or not to add a baseline to the signal
         """
         self.mode = mode.lower()
         self.output_dir = output_dir
         self.num_samples = num_samples
         self.add_noise = add_noise
         self.noise_level = noise_level
+        self.oversampling = oversampling
+        self.oversampled_value = oversampled_value
+        self.oversampling_upper_bound = oversampling_upper_bound
+        self.oversampling_lower_bound = oversampling_lower_bound
+        self.upper_bound = upper_bound
+        self.lower_bound = lower_bound
+        self.p_max = p_max
+        self.alpha = alpha
+        self.baseline = baseline
         
         # Common baseline parameters
         self.U = 2.4283
@@ -83,28 +119,28 @@ class SignalGenerator:
         
         return Voigt(x, amp, sig, gam, center), None  # Return signal and None for P
     
-    def _generate_deuteron_signal(self, x):
+    def _generate_deuteron_signal(self, P):
         """Generate a deuteron signal using the GenerateLineshape function."""
         X = np.linspace(-3, 3, 500)
         
-        ### Define the range of polarization you want to use right here ###
-        P = np.random.uniform(0.01, 0.7)
-        
-        signal = GenerateLineshape(P, X) / 1500.0
-        return signal, P
+        signal, _, _ = GenerateLineshape(P, X)      
+        signal /= 1500.0 ## Scaling it down here
+        return signal
     
     def _add_baseline_and_noise(self, signal, x):
         """Add baseline and optional noise to the signal."""
-        baseline = Baseline(x, self.U, self.Cknob, self.eta, self.cable, 
-                           self.Cstray, self.phi, self.shift)
-        
-        combined_signal = signal + baseline
+        if self.baseline:
+            baseline = Baseline(x, self.U, self.Cknob, self.eta, self.cable, 
+                               self.Cstray, self.phi, self.shift)
+            combined_signal = signal + baseline
+        else:
+            combined_signal = signal
         
         if self.add_noise:
             noise = np.random.normal(0, self.noise_level, size=x.shape)
             return combined_signal + noise, combined_signal, noise
         else:
-            return combined_signal, combined_signal, 0
+            return combined_signal, combined_signal, None
     
     def generate_samples(self, job_id=None):
         """
@@ -121,40 +157,58 @@ class SignalGenerator:
             Path to the saved CSV file
         """
         signal_arr = []
-        p_arr = []
         snr_arr = []
         
         # Get frequency range based on center frequency
-        x, lower_bound, upper_bound = FrequencyBound(self.center_freq)
+        x, freq_lower_bound, freq_upper_bound = FrequencyBound(self.center_freq)
         
-        self.logger.info(f"Generating {self.num_samples} samples in {self.mode} mode")
+        self.logger.info(f"Generating {self.num_samples} samples in {self.mode} mode...")
         
-        for i in tqdm(range(self.num_samples), desc="Generating signals"):
+        if self.oversampling:
+            self.logger.info(f"Oversampling around {self.oversampled_value} between bounds: "
+                            f"Lower bound: {self.oversampling_lower_bound}, Upper bound: {self.oversampling_upper_bound}")
+            
+            # Generate oversampled values
+            oversample_P = np.random.uniform(self.oversampling_lower_bound, self.oversampling_upper_bound, self.num_samples)
+            
+            # Generate distribution of P's outside of oversampling range using power law
+            P_min = self.oversampling_upper_bound
+            u = np.random.uniform(0, 1, self.num_samples)
+            P_power = P_min + (self.p_max - P_min) * (1 - u)**(1.0/self.alpha)
+            
+            # Combine both distributions
+            P_values = np.concatenate([oversample_P, P_power])
+        else:
+            self.logger.info(f"Uniformly creating data between {self.lower_bound} and {self.upper_bound}")
+            # Generate P's uniformly between [lower_bound, upper_bound]
+            P_values = np.random.uniform(self.lower_bound, self.upper_bound, self.num_samples)
+        
+        for Ps in tqdm(P_values, desc="Generating sample data"):
             # Generate signal based on mode
             if self.mode == "deuteron":
-                signal, P = self._generate_deuteron_signal(x)
+                signal = self._generate_deuteron_signal(Ps)
             else:  # proton mode
-                signal, P = self._generate_proton_signal(x)
+                signal = self._generate_proton_signal(x)
                 
             # Add baseline and noise
             noisy_signal, clean_signal, noise = self._add_baseline_and_noise(signal, x)
             
             # Calculate SNR if noise is added
-            if self.add_noise and np.max(np.abs(noise)) > 0:
+            if self.add_noise and noise is not None and np.max(np.abs(noise)) > 0:
                 snr = np.max(np.abs(clean_signal)) / np.max(np.abs(noise))
                 snr_arr.append(snr)
+            else:
+                snr_arr.append(None)
                 
             signal_arr.append(noisy_signal)
-            if P is not None:
-                p_arr.append(P)
         
         # Create dataframe
         df = pd.DataFrame(signal_arr)
         
         # Add metadata columns if available
-        if p_arr:
-            df['P'] = p_arr
-        if snr_arr:
+        if len(P_values) > 0:  # Check if P_values is not empty
+            df['P'] = P_values
+        if len(snr_arr) > 0:  # Check if snr_arr is not empty
             df['SNR'] = snr_arr
             
         # Determine filename
@@ -173,52 +227,65 @@ class SignalGenerator:
         except Exception as e:
             self.logger.error(f"Error saving CSV file: {e}")
             raise
-    
-    @classmethod
-    def from_command_line(cls):
-        """
-        Create a SignalGenerator instance from command line arguments.
-        
-        Command line arguments:
-        -----------------------
-        1: job_id (required) - Job identifier for the output filename
-        2: mode (optional) - "deuteron" or "proton", defaults to "deuteron"
-        3: num_samples (optional) - Number of samples to generate, defaults to 10
-        4: add_noise (optional) - Whether to add noise (1=True, 0=False), defaults to 0
-        
-        Returns:
-        --------
-        tuple
-            A tuple containing (SignalGenerator instance, job_id)
-        """
-        if len(sys.argv) < 2:
-            print("Error: Job ID is required as the first argument")
-            sys.exit(1)
-        
-        job_id = sys.argv[1]
-        
-        # Parse optional arguments
-        mode = sys.argv[2] if len(sys.argv) > 2 else "deuteron"
-        num_samples = int(sys.argv[3]) if len(sys.argv) > 3 else 10
-        add_noise = bool(int(sys.argv[4])) if len(sys.argv) > 4 else False
-        
-        generator = cls(
-            mode=mode,
-            num_samples=num_samples,
-            add_noise=add_noise
-        )
-        
-        return generator, job_id
 
+def parse_args():
+    """Parse command line arguments."""
+    parser = argparse.ArgumentParser(description='Generate signal data for training.')
+    
+    # Required arguments
+    parser.add_argument('job_id', help='Job identifier for the output filename')
+    parser.add_argument('mode', choices=['deuteron', 'proton'], help='Experiment type')
+    parser.add_argument('num_samples', type=int, help='Number of samples to generate')
+    parser.add_argument('add_noise', type=int, choices=[0, 1], help='Whether to add noise (0=False, 1=True)')
+    
+    # Optional arguments with defaults
+    parser.add_argument('--oversampling', type=int, choices=[0, 1], default=0, 
+                        help='Whether to oversample around a value (0=False, 1=True)')
+    parser.add_argument('--oversampled_value', type=float, default=0.0005, 
+                        help='Value to oversample around')
+    parser.add_argument('--oversampling_upper_bound', type=float, default=0.0006, 
+                        help='Upper bound for oversampling range')
+    parser.add_argument('--oversampling_lower_bound', type=float, default=0.0004, 
+                        help='Lower bound for oversampling range')
+    parser.add_argument('--upper_bound', type=float, default=0.6, 
+                        help='Upper bound of P value (not oversampled)')
+    parser.add_argument('--lower_bound', type=float, default=0.1, 
+                        help='Lower bound of P value (not oversampled)')
+    parser.add_argument('--p_max', type=float, default=0.6, 
+                        help='Maximum polarization value')
+    parser.add_argument('--alpha', type=float, default=2.0, 
+                        help='Decay rate for power law distribution')
+    parser.add_argument('--baseline', type=int, choices=[0, 1], default=1, 
+                        help='Whether to add a baseline (0=False, 1=True)')
+    parser.add_argument('--noise_level', type=float, default=0.000002, 
+                        help='Standard deviation of Gaussian noise')
+    parser.add_argument('--output_dir', default='Training_Data', 
+                        help='Directory to save output CSV files')
+    
+    return parser.parse_args()
 
 if __name__ == "__main__":
-    # When run directly, generates data and indexes based on job_id
-    generator, job_id = SignalGenerator.from_command_line()
-    generator.generate_samples(job_id)
+    # Parse command line arguments
+    args = parse_args()
     
+    # Create SignalGenerator with parsed arguments
+    generator = SignalGenerator(
+        mode=args.mode,
+        output_dir=args.output_dir,
+        num_samples=args.num_samples,
+        add_noise=bool(args.add_noise),
+        noise_level=args.noise_level,
+        oversampling=bool(args.oversampling),
+        oversampled_value=args.oversampled_value,
+        oversampling_upper_bound=args.oversampling_upper_bound,
+        oversampling_lower_bound=args.oversampling_lower_bound,
+        upper_bound=args.upper_bound,
+        lower_bound=args.lower_bound,
+        p_max=args.p_max,
+        alpha=args.alpha,
+        baseline=bool(args.baseline)
+    )
     
-##### Running this script #####
-
-'''
-./jobscript <num_jobs> <proton/deuteron specimen (optional)>
-'''
+    # Generate samples
+    generator.generate_samples(args.job_id)
+    

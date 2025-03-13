@@ -219,7 +219,6 @@ for i, p_value in enumerate(tqdm(P_values, desc="Training models")):
     
     R_reshaped = R.reshape(-1, 1)
     
-    # Train the model
     history = model.fit(
         R_reshaped, X_log_reshaped,
         epochs=100,  
@@ -229,7 +228,6 @@ for i, p_value in enumerate(tqdm(P_values, desc="Training models")):
         verbose=1
     )
     
-    # Save the model
     model_path = os.path.join(models_dir, f'Decoder_model_{version}.keras')
     model.save(model_path)
     all_models.append(model)
