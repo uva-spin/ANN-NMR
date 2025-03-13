@@ -37,7 +37,7 @@ def plot_rpe_and_residuals_over_range(y_true, y_pred, performance_dir, version):
 
         # Create subplot for histogram of residuals using Seaborn
         ax = plt.subplot(2, 3, valid_bins)  # Use valid_bins for positioning
-        sns.histplot(residuals, bins=30, kde=True, stat="density", color='blue', edgecolor='black', ax=ax, alpha=0.6)
+        sns.histplot(residuals, bins=30, kde=False, stat="density", color='blue', edgecolor='black', ax=ax, alpha=0.6)
         
 
 
@@ -245,7 +245,7 @@ def plot_rpe_and_residuals(y_true, y_pred, performance_dir, version, figsize=(18
     
     # 2. Residuals Plot
     ax2 = fig.add_subplot(gs[0, 1])
-    sns.histplot(results_df['Residuals'], bins=30, kde=True, stat="density", 
+    sns.histplot(results_df['Residuals'], bins=30, kde=False, stat="density", 
                 color=colors[2], edgecolor='black', alpha=0.6, ax=ax2)
     
     # Calculate and display mean and standard deviation
@@ -269,7 +269,7 @@ def plot_rpe_and_residuals(y_true, y_pred, performance_dir, version, figsize=(18
     
     # 3. RPE Histogram
     ax3 = fig.add_subplot(gs[0, 2])
-    sns.histplot(results_df['RPE'], bins=30, kde=True, stat="density", 
+    sns.histplot(results_df['RPE'], bins=30, kde=False, stat="density", 
                 color=colors[3], edgecolor='black', alpha=0.6, ax=ax3)
     
     # Calculate and display mean and standard deviation
@@ -377,7 +377,7 @@ def plot_rpe_and_residuals(y_true, y_pred, performance_dir, version, figsize=(18
     
     if len(filtered_df) > 0:
         # Create histogram with KDE for the percentage errors of the filtered data
-        ax = sns.histplot(filtered_df['Percentage_Error'], bins=50, kde=True, stat="density", 
+        ax = sns.histplot(filtered_df['Percentage_Error'], bins=50, kde=False, stat="density", 
                          color="#3498db", edgecolor='black', alpha=0.7)
         
         # Calculate mean and standard deviation
@@ -625,7 +625,7 @@ def plot_enhanced_results(y_true, y_pred, output_dir, version_name):
     plt.figure(figsize=(10, 8))
     
     # Create a KDE plot for residuals
-    sns.histplot(residuals, bins=100, kde=True, color=custom_palette[2], alpha=0.7, stat='density')
+    sns.histplot(residuals, bins=100, kde=False, color=custom_palette[2], alpha=0.7, stat='density')
     
     mean = np.mean(residuals)
     std_dev = np.std(residuals)
@@ -696,7 +696,7 @@ def plot_enhanced_results(y_true, y_pred, output_dir, version_name):
     rpe_filtered = rpe[rpe < np.percentile(rpe, 99)]
     
     # Create a KDE plot for RPE
-    sns.histplot(rpe_filtered, bins=100, kde=True, color=custom_palette[4], alpha=0.7, stat='density')
+    sns.histplot(rpe_filtered, bins=100, kde=False, color=custom_palette[4], alpha=0.7, stat='density')
     
     mean_rpe = np.mean(rpe_filtered)
     std_dev_rpe = np.std(rpe_filtered)
@@ -874,19 +874,18 @@ def plot_training_history(history, output_dir, version_name):
     ### Debugging Message ###
     print(f"Plotting Training History for {version_name}")
     
+    history = history.history
+    
     import os
     import numpy as np
     import matplotlib.pyplot as plt
     import seaborn as sns
     import matplotlib.gridspec as gridspec
     from matplotlib.ticker import MaxNLocator
-    from matplotlib.patches import Patch
     
-    # Create output directory if it doesn't exist
     os.makedirs(output_dir, exist_ok=True)
     
-    # Set seaborn style for better aesthetics
-    sns.set(style="whitegrid", context="paper", font_scale=1.2,
+    sns.set_theme(style="whitegrid", context="paper", font_scale=1.2,
             rc={"lines.linewidth": 2.5, "font.sans-serif": ['Arial', 'DejaVu Sans']})
     
     # Custom color palettes

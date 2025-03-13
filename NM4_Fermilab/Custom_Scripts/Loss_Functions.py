@@ -71,17 +71,16 @@ def Lineshape_Loss(y_true, y_pred):
     signal_pred = GenerateLineshapeTensor(y_pred, X) / 1500.0
     
     x, lower_bound, upper_bound = FrequencyBoundTensor(32.32)
-    baseline = BaselineTensor(x, U, Cknob, eta, cable, Cstray, phi, shift)
+    baselinetensor = BaselineTensor(x, U, Cknob, eta, cable, Cstray, phi, shift)
     
-    baseline = tf.convert_to_tensor(baseline, dtype=tf.float32)
     
-    combined_signal_true = signal_true + baseline
-    combined_signal_pred = signal_pred + baseline
+    combined_signal_true = signal_true + baselinetensor
+    combined_signal_pred = signal_pred + baselinetensor
     
     combined_signal_true = tf.convert_to_tensor(combined_signal_true, dtype=tf.float32)
     combined_signal_pred = tf.convert_to_tensor(combined_signal_pred, dtype=tf.float32)
     
-    return tf.reduce_mean(tf.square(combined_signal_true - combined_signal_pred))
+    return tf.reduce_mean(tf.square(combined_signal_true - combined_signal_pred)), baselinetensor, x
 
 def Polarization_Loss(y_true, y_pred):
 
@@ -90,3 +89,27 @@ def Polarization_Loss(y_true, y_pred):
 def Polarization_Lineshape_Loss(y_true, y_pred):
  
     return Polarization_Loss(y_true, y_pred) + 0.1 * Lineshape_Loss(y_true, y_pred)
+
+
+# y_true = tf.constant(0.6, dtype=tf.float32)
+# y_pred = tf.constant(0.3, dtype=tf.float32)
+
+
+
+# # print(y_pred)
+# _, baselinetensor, x = Lineshape_Loss(y_true, y_pred)
+
+# X = FrequencyBound(32.32)
+# U = 2.4283
+# Cknob = 0.1899
+# eta = 1.04e-2
+# cable = 6/2
+# Cstray = 1e-20
+# phi = 6.1319
+# shift = 0.0
+# baseline = Baseline(X, U, Cknob, eta, cable, Cstray, phi, shift)
+
+
+# plt.plot(x.numpy(), baselinetensor.numpy(), color="red")
+# plt.plot(x.numpy(), baseline, color="blue")
+# plt.show()

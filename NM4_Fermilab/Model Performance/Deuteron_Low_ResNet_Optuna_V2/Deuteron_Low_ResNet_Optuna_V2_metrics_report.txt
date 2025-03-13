@@ -1,0 +1,25 @@
+Model Evaluation Metrics - Deuteron_Low_ResNet_Optuna_V2
+==================================================
+
+Basic Error Metrics:
+MAE: 0.00525095
+RMSE: 0.01512408
+Max Absolute Error: 0.93369979
+R²: nan
+
+Relative Error Metrics:
+Median RPE: 0.09923%
+Mean RPE: 0.10239%
+90th Percentile RPE: 0.19059%
+95th Percentile RPE: 0.21982%
+99th Percentile RPE: 0.24380%
+
+Threshold Metrics:
+% within 0.0001 abs error: 0.9376%
+% within 0.001 abs error: 9.9122%
+% within 0.01 abs error: 99.8840%
+% within 0.1 abs error: 99.9660%
+% within 0.01% rel error: 5.0381%
+% within 0.1% rel error: 50.3789%
+% within 1% rel error: 100.0000%
+% within 5% rel error: 100.0000%

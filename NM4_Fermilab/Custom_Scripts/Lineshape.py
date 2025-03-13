@@ -78,6 +78,8 @@ def Signal(f, U, Cknob, eta, trim, Cstray, phi_const, DC_offset,ampG1, sigmaG1, 
     w_low = 2 * pi * (213 - 4) * 1e6
     w_high = 2 * pi * (213 + 4) * 1e6
     delta_w = 2 * pi * 4e6 / 500
+    
+    trim = tf.cast(trim, tf.complex64)
 
     # Convert frequency to angular frequency (rad/s)
     w = 2 * pi * f * 1e6
@@ -112,9 +114,10 @@ def Signal(f, U, Cknob, eta, trim, Cstray, phi_const, DC_offset,ampG1, sigmaG1, 
 
     def ZC(w):
         Cw = C(w)
-        with np.errstate(divide='ignore', invalid='ignore'):
-            result = np.where(Cw != 0, 1 / (im_unit * w * Cw), 0)
-        return np.where(w == 0, 0, result)  # Avoid invalid values for w=0
+        # Ensure both parts are of the same type
+        real_part = tf.cast(1.0, tf.complex64)  # Cast to complex64
+        imaginary_part = tf.cast(w, tf.complex64) * tf.cast(Cw, tf.complex64)
+        return real_part / tf.complex(0.0, imaginary_part)
 
     def vel(w):
         return 1 / beta(w)
@@ -310,101 +313,132 @@ def Baseline(f, U, Cknob, eta, trim, Cstray, phi_const, DC_offset):
 
     out_y = V_out(w)
     offset = np.array([x - min(out_y.real) for x in out_y.real])
+    
     return offset.real + DC_offset
 
-@tf.function
+# @tf.function
 def BaselineTensor(f, U, Cknob, eta, trim, Cstray, phi_const, DC_offset):
+    
+    tf.config.run_functions_eagerly(True)
+
     """
-    Calculate baseline signal. Converted to TensorFlow operations.
+    Calculate baseline signal with TensorFlow operations.
+    
+    Parameters:
+    -----------
+    f : float or tensor
+        Frequency in MHz
+    U : float or tensor
+        Voltage
+    Cknob : float or tensor
+        Capacitance knob setting
+    eta : float or tensor
+        Eta parameter
+    trim : float or tensor
+        Trim parameter
+    Cstray : float or tensor
+        Stray capacitance
+    phi_const : float or tensor
+        Phase constant (degrees)
+    DC_offset : float or tensor
+        DC offset
+        
+    Returns:
+    --------
+    tensor
+        Baseline signal with offset applied
     """
-    # Convert all inputs to tensors
-    f = tf.convert_to_tensor(f, dtype=tf.float32)
-    U = tf.convert_to_tensor(U, dtype=tf.float32)
-    Cknob = tf.convert_to_tensor(Cknob, dtype=tf.float32)
-    eta = tf.convert_to_tensor(eta, dtype=tf.float32)
-    trim = tf.convert_to_tensor(trim, dtype=tf.float32)
-    Cstray = tf.convert_to_tensor(Cstray, dtype=tf.float32)
-    phi_const = tf.convert_to_tensor(phi_const, dtype=tf.float32)
-    DC_offset = tf.convert_to_tensor(DC_offset, dtype=tf.float32)
+    # f = tf.convert_to_tensor(f, dtype=tf.float32)
+    U = tf.complex(U, 0.0)
+    Cknob = tf.complex(Cknob, 0.0)
+    eta = tf.complex(eta, 0.0)
+    trim = tf.complex(trim, 0.0)
+    Cstray = tf.complex(Cstray, 0.0)
+    phi_const = tf.complex(phi_const, 0.0)
+    # DC_offset = tf.complex(DC_offset, 0.0)
     
-    # Preamble with TensorFlow constants
-    circ_consts = (
-        tf.constant(3e-8, dtype=tf.float32),       # L0
-        tf.constant(0.35, dtype=tf.float32),       # Rcoil
-        tf.constant(619.0, dtype=tf.float32),      # R
-        tf.constant(50.0, dtype=tf.float32),       # R1
-        tf.constant(10.0, dtype=tf.float32),       # r
-        tf.constant(0.0343, dtype=tf.float32),     # alpha
-        tf.constant(4.752e-9, dtype=tf.float32),   # beta1
-        tf.constant(50.0, dtype=tf.float32),       # Z_cable
-        tf.constant(1.027e-10, dtype=tf.float32),  # D
-        tf.constant(2.542e-7, dtype=tf.float32),   # M
-        tf.constant(0.0, dtype=tf.float32),        # delta_C
-        tf.constant(0.0, dtype=tf.float32),        # delta_phi
-        tf.constant(0.0, dtype=tf.float32),        # delta_phase
-        tf.constant(0.0, dtype=tf.float32)         # delta_l
-    )
+    f = tf.complex(f, 0.0)
     
-    pi = tf.constant(3.14159265358979323846, dtype=tf.float32)
-    sign = tf.constant(1.0, dtype=tf.float32)
+    # Constants
+    pi = tf.complex(3.14159265358979323846, 0.0)
     
-    # Unpack circuit constants
-    L0, Rcoil, R, R1, r, alpha, beta1, Z_cable, D, M, delta_C, delta_phi, delta_phase, delta_l = circ_consts
+    # Circuit constants
+    L0 = tf.complex(3e-8, 0.0)       # Inductance
+    Rcoil = tf.complex(0.35, 0.0)    # Coil resistance
+    R = tf.complex(619.0, 0.0)       # Resistance
+    R1 = tf.complex(50.0, 0.0)       # R1 resistance
+    r = tf.complex(10.0, 0.0)        # r resistance
+    alpha = tf.complex(0.0343, 0.0)  # Alpha parameter
+    beta1 = tf.complex(4.752e-9, 0.0) # Beta parameter
+    Z_cable = tf.complex(50.0, 0.0)  # Cable impedance
+    D = tf.complex(1.027e-10, 0.0)   # D parameter
+    M = tf.complex(2.542e-7, 0.0)    # M parameter
+    
+    delta_C = tf.complex(0.0, 0.0)
+    delta_phi = tf.complex(0.0, 0.0)
+    delta_phase = tf.complex(0.0, 0.0)
+    delta_l = tf.complex(0.0, 0.0)
+    
+    sign = tf.complex(1.0, 0.0)
     
     # Calculate ideal constant current (mA)
     I = U * 1000.0 / R
     
-    # Define frequency ranges
-    w_res = 2.0 * pi * 32e6
-    w_low = 2.0 * pi * (32.0 - 4.0) * 1e6
-    w_high = 2.0 * pi * (32.0 + 4.0) * 1e6
-    delta_w = 2.0 * pi * 4e6 / 500.0
+    w_res = 2.0 * pi * (32 - 4) * 1e6            # Resonant angular frequency
+    w_low = 2.0 * pi * (32 - 4) * 1e6              # Lower bound angular frequency
+    w_high = 2.0 * pi * (32 + 4) * 1e6             # Upper bound angular frequency
     
     # Convert frequency to angular frequency (rad/s)
     w = 2.0 * pi * f * 1e6
     
+    w = tf.cast(w, tf.complex64)
+    
+    # Slope functions
     def slope():
-        denominator = 0.25 * 2.0 * pi * 1e6
-        return delta_C / denominator
+        return delta_C / (0.25 * 2.0 * pi * 1e6)
     
     def slope_phi():
-        denominator = 0.25 * 2.0 * pi * 1e6
-        return delta_phi / denominator
+        return delta_phi / (0.25 * 2.0 * pi * 1e6)
     
-    # Define capacitance functions
-    def Ctrim(w):
-        return slope() * (w - w_res)
-    
+    # Capacitance functions
     def Cmain():
         return 20.0 * 1e-12 * Cknob
+    
+    def Ctrim(w):
+        return slope() * (w - w_res)
     
     def C(w):
         return Cmain() + Ctrim(w) * 1e-12
     
-    # Define impedance and related functions
+    # Impedance and related functions
     def Z0(w):
-        S = 2.0 * Z_cable * alpha
         
-        return tf.sqrt((S + w * M * tf.complex(0.0,1.0))/(w*D*tf.complex(0.0,1.0)))
+        S = 2.0 * Z_cable * alpha
+        return tf.sqrt((S + w * M) / (w * D))
     
     def beta(w):
-        return tf.cast(beta1 * w , tf.complex32)
+        return tf.cast(beta1 * w, tf.complex64)
     
     def gamma(w):
-        return tf.complex(alpha, beta(w))
+        return tf.complex(
+            tf.cast(alpha, tf.float32),
+            tf.cast(beta1 * w, tf.float32)
+        )
     
     def ZC(w):
         Cw = C(w)
-        
-        return (tf.constant(1.0) / tf.complex(0.0,w*Cw))
+        return 1.0 / w * Cw
+    
     def vel(w):
-        return tf.constant(1.0) / beta(w)
+        beta_value = beta(w)
+        return tf.cast(1.0, tf.complex64) / beta_value
     
     def l(w):
-        return trim * vel(w_res) + delta_l
+        return tf.cast(trim, tf.complex64) * tf.cast(vel(w_res), tf.complex64) + tf.cast(delta_l, tf.complex64)
     
+    # Material property functions
     def ic(w):
-        return tf.ones_like(w) * tf.constant(0.11133)
+        return tf.ones_like(w) * tf.complex(0.11133, 0.0)
     
     def chi(w):
         return tf.zeros_like(w)
@@ -415,20 +449,20 @@ def BaselineTensor(f, U, Cknob, eta, trim, Cstray, phi_const, DC_offset):
     def L(w):
         return L0 * (1.0 + sign * 4.0 * pi * eta * pt(w) * chi(w))
     
+    # Impedance functions
     def ZLpure(w):
-        return tf.complex(0.0, 1.0) * w * L(w) + Rcoil
+        return tf.complex(0.0, 1.0) * tf.cast(w, tf.complex64) * tf.cast(L(w), tf.complex64) + tf.cast(Rcoil, tf.complex64)
     
     def Zstray(w):
-        return (tf.constant(1.0)/(tf.complex(0.0,1.0)*w*Cstray))
+        return tf.cast(1.0, tf.complex64) / (tf.complex(0.0, 1.0) * tf.cast(w, tf.complex64) * tf.cast(Cstray, tf.complex64))
     
     def ZL(w):
         ZLp = ZLpure(w)
         Zs = Zstray(w)
-        # Handle division by zero
-        safe_denominator = tf.where(tf.abs(ZLp + Zs) < 1e-10, 
-                                   tf.complex(1e-10, 0.0), 
-                                   ZLp + Zs)
-        return ZLp * Zs / safe_denominator
+        
+        numerator = ZLp * Zs
+        denominator = ZLp + Zs
+        return numerator / denominator
     
     def ZT(w):
         Z0w = Z0(w)
@@ -439,45 +473,34 @@ def BaselineTensor(f, U, Cknob, eta, trim, Cstray, phi_const, DC_offset):
         numerator = Z0w * (ZLw + Z0w * tanh_term)
         denominator = Z0w + ZLw * tanh_term
         
-        # Handle division by zero
-        safe_denominator = tf.where(tf.abs(denominator) < 1e-10, 
-                                   tf.complex(1e-10, 0.0), 
-                                   denominator)
-        return numerator / safe_denominator
+        return numerator / denominator
     
     def Zleg1(w):
-        return r + ZC(w) + ZT(w)
+        return tf.cast(r, tf.complex64) + ZC(w) + ZT(w)
     
     def Ztotal(w):
         Zleg = Zleg1(w)
-        # Handle division by zero
-        safe_denominator = tf.where(tf.abs(1.0 + (R1 / Zleg)) < 1e-10, 
-                                   tf.complex(1e-10, 0.0), 
-                                   1.0 + (R1 / Zleg))
-        return R1 / safe_denominator
+        
+        one = tf.complex(1.0, 0.0)
+        R1_complex = tf.cast(R1, tf.complex64)
+        
+        denominator = one + (R1_complex / Zleg)
+        return R1_complex / denominator
     
     def parfaze(w):
         xp1 = w_low
         xp2 = w_res
         xp3 = w_high
-        yp1 = tf.constant(0.0, dtype=tf.float32)
+        yp1 = tf.complex(0.0, 0.0)
         yp2 = delta_phase
-        yp3 = tf.constant(0.0, dtype=tf.float32)
+        yp3 = tf.complex(0.0, 0.0)
         
-        denominator1 = ((xp1**2 - xp2**2) * (xp1 - xp3) - (xp1**2 - xp3**2) * (xp1 - xp2))
-        # Handle division by zero
-        safe_denominator1 = tf.where(tf.abs(denominator1) < 1e-10, 1e-10, denominator1)
         
-        a = ((yp1 - yp2) * (xp1 - xp3) - (yp1 - yp3) * (xp1 - xp2)) / safe_denominator1
-        
-        denominator2 = xp1 - xp3
-        # Handle division by zero
-        safe_denominator2 = tf.where(tf.abs(denominator2) < 1e-10, 1e-10, denominator2)
-        
-        bb = (yp1 - yp3 - a * (xp1**2 - xp3**2)) / safe_denominator2
-        c = yp1 - a * xp1**2 - bb * xp1
-        
-        return a * w**2 + bb * w + c
+        a = ((yp1 - yp2) * (xp1 - xp3) - (yp1 - yp3) * (xp1 - xp2)) / (((xp1 ** 2) - (xp2 ** 2)) * (xp1 - xp3) - ((xp1 ** 2) - (xp3 ** 2)) * (xp1 - xp2))
+        bb = (yp1 - yp3 - a * ((xp1 ** 2) - (xp3 ** 2))) / (xp1 - xp3)
+        c = yp1 - a * (xp1 ** 2) - bb * xp1
+        # return a * w ** 2 + bb * w + c
+        return 0.0
     
     def phi_trim(w):
         return slope_phi() * (w - w_res) + parfaze(w)
@@ -485,21 +508,37 @@ def BaselineTensor(f, U, Cknob, eta, trim, Cstray, phi_const, DC_offset):
     def phi(w):
         return phi_trim(w) + phi_const
     
+    # Output voltage calculation
     def V_out(w):
         Z_total = Ztotal(w)
-        phi_radians = phi(w) * pi / 180.0
-        cos_phi = tf.cos(phi_radians)
-        sin_phi = tf.sin(phi_radians)
-        exp_term = tf.complex(cos_phi, sin_phi)
-        return -1.0 * I * Z_total * exp_term
+        
+        I_complex = tf.cast(I, tf.complex64)
+        neg_one = tf.cast(-1.0, tf.complex64)
+        
+        # Phase calculation in radians
+        phi_value = tf.math.real(phi(w))
+        pi_float = tf.cast(pi, tf.float32)
+        phi_radians = phi_value * pi_float / 180.0
+        
+        # Complex exponential for phase
+        cos_phi = tf.math.cos(phi_radians)
+        sin_phi = tf.math.sin(phi_radians)
+        exp_term = tf.math.exp(tf.complex(cos_phi, sin_phi))
+        
+        # Final output calculation
+        return neg_one * I_complex * Z_total * exp_term
     
-    # Calculate output
+    # Calculate output and apply offset
     out_y = V_out(w)
     real_part = tf.math.real(out_y)
     min_val = tf.reduce_min(real_part)
     offset = real_part - min_val
+    parfaze_test = parfaze(w)
+    print("Parfaze:", parfaze_test)
     
     return offset + DC_offset
+
+
 
 def GenerateLineshape(P,x):
     
@@ -543,21 +582,19 @@ def GenerateLineshape(P,x):
     signal = Iplus + Iminus
     return signal,Iplus,Iminus
 
-def GenerateLineshapeTensor(P, x):
+def GenerateLineshapeTensor(P, x): ### Working now
     """
     Generate lineshape based on polarization and frequency range.
     Converted to TensorFlow operations.
     """
-    # Ensure inputs are tensors
-    P = tf.convert_to_tensor(P, dtype=tf.float32)
-    x = tf.convert_to_tensor(x, dtype=tf.float32)
     
-    # Define constants
-    g = tf.constant(0.15, dtype=tf.float32)  # Assuming g value - add your actual value
-    s = tf.constant(0.0, dtype=tf.float32)   # Assuming s value - add your actual value
-    bigy = tf.constant(1.0, dtype=tf.float32)  # Assuming bigy value - add your actual value
+    P = tf.constant(P, dtype=tf.float32)
+    x = tf.convert_to_tensor(x, dtype=tf.float32) 
     
-    # Define helper functions using TensorFlow operations
+    g = tf.constant(0.05, dtype=tf.float32)
+    s = tf.constant(0.04, dtype=tf.float32)
+    bigy = tf.constant((3-s)**0.5, dtype=tf.float32)
+    
     def bigxsquare(x, eps):
         eps_tensor = tf.constant(eps, dtype=tf.float32)
         return tf.sqrt(g**2 + (1.0 - eps_tensor * x - s)**2)
@@ -609,15 +646,12 @@ def GenerateLineshapeTensor(P, x):
     def icurve(x, eps):
         return mult_term(x, eps) * (2.0 * cosaltwo(x, eps) * termone(x, eps) + sinaltwo(x, eps) * termtwo(x, eps))
     
-    # Calculate r 
-    # Handle special case for P to avoid division by zero
+
     safe_P = tf.where(tf.abs(P) < 1e-10, tf.ones_like(P) * 1e-10, P)
     r = (tf.sqrt(4.0 - 3.0 * tf.pow(safe_P, 2)) + safe_P) / (2.0 - 2.0 * safe_P)
     
-    # Expand dimensions for broadcasting
     r_expanded = tf.expand_dims(r, -1)
     
-    # Calculate signal components
     Iplus = r_expanded * icurve(x, 1) 
     Iminus = icurve(x, -1) 
     signal = Iplus + Iminus

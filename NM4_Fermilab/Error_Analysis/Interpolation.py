@@ -80,27 +80,10 @@ def create_model(errF, input_shape=(1,)):
         errF = tf.convert_to_tensor(errF, dtype=tf.float32)
         squared_diff = tf.square(y_true - y_pred)
         
-        # Basic binned MSE
-        basic_loss = tf.reduce_mean(squared_diff / tf.square(errF))
+        # # Basic binned MSE
+        loss = tf.reduce_mean(squared_diff / tf.square(errF))
         
-        batch_size = tf.shape(y_true)[0]
-        y_true_reshaped = tf.reshape(y_true, (batch_size,))
-        y_pred_reshaped = tf.reshape(y_pred, (batch_size,))
-
-        gradient_true = y_true_reshaped[1:] - y_true_reshaped[:-1]
-        gradient_pred = y_pred_reshaped[1:] - y_pred_reshaped[:-1]
-        shape_penalty = tf.reduce_mean(tf.square(gradient_true - gradient_pred))
-        
-        non_negative_penalty = tf.reduce_mean(tf.maximum(tf.constant(0, dtype=tf.float32), -y_pred))
-        
-        area_penalty = tf.square(tf.reduce_sum(y_true) - tf.reduce_sum(y_pred))
-        
-        return basic_loss + 0.1 * shape_penalty + 0.01 * non_negative_penalty + 0.01 * area_penalty
-
-    def PI_Loss(errF):
-        def loss(y_true, y_pred):
-            return Loss(y_true, y_pred, errF)
-        return loss
+        return loss 
     
     def lineshape_accuracy(y_true, y_pred):
 
@@ -121,7 +104,7 @@ def create_model(errF, input_shape=(1,)):
         similarity = 1.0 - tf.reduce_mean(tf.abs(y_true_norm - y_pred_norm))
         return similarity
         
-    loss_function = PI_Loss(errF)
+    loss_function = Loss(errF)
     
     initial_learning_rate = 0.01
     model.compile(

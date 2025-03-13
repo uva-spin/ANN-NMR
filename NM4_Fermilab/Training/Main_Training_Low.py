@@ -39,8 +39,8 @@ if physical_devices:
 tf.keras.backend.set_floatx('float32')
 
 # File paths and versioning
-data_path = find_file("Deuteron_Oversampled_500K.csv")  
-version = 'Deuteron_Low_ResNet_Optuna_V1'  
+data_path = find_file("Deuteron_Oversampled_1M.csv")  
+version = 'Deuteron_Low_ResNet_Optuna_V2'  
 performance_dir = f"Model Performance/{version}"  
 model_dir = f"Models/{version}"  
 os.makedirs(performance_dir, exist_ok=True)
@@ -99,12 +99,14 @@ class HighPrecisionLoss(tf.keras.losses.Loss):
         return config
 
 
-def residual_block(x, units, dropout_rate=0.25, l2_reg=0.01):
+def residual_block(x, units, l2_reg=0.01, dropout_rate=0.2):
     y = layers.Dense(units, activation=None, 
                     kernel_initializer=initializers.GlorotNormal(),
                     kernel_regularizer=regularizers.l2(l2_reg))(x)
     y = layers.BatchNormalization()(y)
     y = layers.Activation('relu')(y)
+    y = layers.Dropout(dropout_rate)(y)
+    
     y = layers.Dense(units, activation=None, 
                     kernel_initializer=initializers.GlorotNormal(),
                     kernel_regularizer=regularizers.l2(l2_reg))(y)
@@ -124,16 +126,20 @@ def Polarization_Model(params):
     inputs = layers.Input(shape=(500,), dtype='float32')
     
     x = layers.BatchNormalization()(inputs)
+    # x = layers.Dropout(params.get('input_dropout_rate', 0.1))(x)
     
     num_layers = params['num_layers']
     units_per_layer = params['units_per_layer']
-    dropout_rate = params['dropout_rate']
     l2_reg = params['l2_reg']
+    dropout_rate = params.get('dropout_rate', 0.2) 
     
     for i in range(num_layers):
         units = units_per_layer[i]
-        x = residual_block(x, units, dropout_rate, l2_reg)
+        x = residual_block(x, units, l2_reg, dropout_rate)
         
+    # Add dropout before the final layer
+    x = layers.Dropout(dropout_rate)(x)
+    
     outputs = layers.Dense(1, activation='linear', 
                           kernel_initializer=initializers.GlorotNormal())(x)
     
@@ -146,11 +152,11 @@ def Polarization_Model(params):
         epsilon=params['epsilon'],
         clipnorm=params['clipnorm']
     )
-    loss_function = HighPrecisionLoss(alpha=1.0, beta=10.0, gamma=5.0)
+    # loss_function = HighPrecisionLoss(alpha=1.0, beta=10.0, gamma=5.0)
 
     model.compile(
         optimizer=optimizer,
-        loss=loss_function,
+        loss=tf.keras.losses.LogCosh(),
         metrics=[tf.keras.metrics.MeanAbsoluteError(name='mae')]
     )
     return model
@@ -166,12 +172,10 @@ def objective(trial):
         units = trial.suggest_categorical(f'units_{i}', [min_units, min_units*2, min_units*4, max_units])
         units_per_layer.append(units)
     
-    batch_size = trial.suggest_categorical('batch_size', [32, 64, 128, 256])
     
     params = {
         'num_layers': num_layers,
         'units_per_layer': units_per_layer,  # Pass the entire list
-        'dropout_rate': trial.suggest_float('dropout_rate', 0.1, 0.5),
         'l2_reg': trial.suggest_float('l2_reg', 1e-4, 1e-1, log=True),
         'learning_rate': trial.suggest_float('learning_rate', 1e-5, 1e-3, log=True),
         'beta_1': trial.suggest_float('beta_1', 0.8, 0.99),
@@ -196,7 +200,7 @@ def objective(trial):
         X_train, y_train,
         validation_data=(X_val, y_val),
         epochs=100,  
-        batch_size=batch_size,  
+        batch_size=256,  
         callbacks=[early_stopping, pruning_callback],
         verbose=0  
     )
@@ -206,15 +210,18 @@ def objective(trial):
     gc.collect()  # Collect garbage to free up memory
 
     
-    # Return the best validation MAE
     return history.history['val_mae'][-1]
 
 print("Loading data...")
-data = pd.read_csv(data_path)
 try:
+    data = pd.read_csv(data_path)
     print("Data loaded successfully!")
 except Exception as e:
     print(f"Error loading data: {e}")
+data = data[data['P'] <= 0.01]
+print(f"Number of samples: {len(data)}")
+    
+    
     
     
 print("Creating bins for stratified splitting...")
@@ -241,7 +248,7 @@ X_test = scaler.transform(X_test).astype('float32')
 print("Data normalized successfully")
 
 
-batch_size = 64  # Define your batch size
+batch_size = 256  # Define your batch size
 
 train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train))
 train_dataset = train_dataset.shuffle(buffer_size=len(X_train))  
@@ -261,8 +268,21 @@ test_dataset = test_dataset.prefetch(tf.data.experimental.AUTOTUNE)
 if __name__ == "__main__":
     try:
         print("Starting hyperparameter optimization with Optuna...")
-        study = optuna.create_study(direction='minimize', pruner=optuna.pruners.MedianPruner())
-        study.optimize(objective, n_trials=50)  
+        storage = optuna.storages.RDBStorage(
+            "sqlite:///optuna_study.db",
+            skip_compatibility_check=False, 
+            skip_table_creation=False  
+        )
+        
+        
+        study = optuna.create_study(
+            direction='minimize', 
+            pruner=optuna.pruners.MedianPruner(), 
+            study_name=version, 
+            storage=storage,
+            load_if_exists=True
+            )
+        study.optimize(objective, n_trials=1)  
         
         print("Best trial:")
         trial = study.best_trial
@@ -280,14 +300,12 @@ if __name__ == "__main__":
         best_params = {
             'num_layers': num_layers,
             'units_per_layer': units_per_layer,
-            'dropout_rate': trial.params['dropout_rate'],
             'l2_reg': trial.params['l2_reg'],
             'learning_rate': trial.params['learning_rate'],
             'beta_1': trial.params['beta_1'],
             'beta_2': trial.params['beta_2'],
             'epsilon': trial.params['epsilon'],
             'clipnorm': trial.params['clipnorm'],
-            'batch_size': trial.params['batch_size']
         }
         
         with open(os.path.join(performance_dir, 'best_params.json'), 'w') as f:
@@ -323,7 +341,7 @@ if __name__ == "__main__":
         history = final_model.fit(
             train_dataset,
             validation_data=val_dataset,
-            epochs=1000,
+            epochs=10,
             callbacks=[early_stopping, reduce_lr, model_checkpoint, csv_logger],
             verbose=2
         )
