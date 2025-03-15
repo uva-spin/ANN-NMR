@@ -9,19 +9,19 @@ from Custom_Scripts.Variables import *
 
 def FrequencyBound(f):
     # Define the domain to fit (bins 100 to 400)
-    fit_start_bin, fit_end_bin = 0, 500
+    fit_start_bin, fit_end_bin = 0, 1000
 
     # Frequency conversion factors
     bin_to_freq = 0.0015287  # MHz per bin
     start_freq = f  # Starting frequency in MHz
 
-    x_full_bins = np.arange(500)  # Full range of bins
+    x_full_bins = np.arange(1000)  # Full range of bins
     x_full_freq = start_freq + x_full_bins * bin_to_freq  # Convert bins to frequency
 
     x_bins = x_full_bins[fit_start_bin:fit_end_bin+1]
     x_freq = x_full_freq[fit_start_bin:fit_end_bin+1]
 
-    return x_full_freq,  x_full_freq[0], x_full_freq[-1]
+    return x_freq,  x_full_freq[0], x_full_freq[-1]
 
 def FrequencyBoundTensor(f):
     """
@@ -195,7 +195,7 @@ def Baseline(f, U, Cknob, eta, trim, Cstray, phi_const, DC_offset):
     # Preamble
     circ_consts = (3*10**(-8), 0.35, 619, 50, 10, 0.0343, 4.752*10**(-9), 50, 1.027*10**(-10), 2.542*10**(-7), 0, 0, 0, 0)
     pi = np.pi
-    im_unit = 1j  # Use numpy's complex unit (1j)
+    im_unit = 1j  
     sign = 1
 
     # Main constants
@@ -315,6 +315,205 @@ def Baseline(f, U, Cknob, eta, trim, Cstray, phi_const, DC_offset):
     offset = np.array([x - min(out_y.real) for x in out_y.real])
     
     return offset.real + DC_offset
+
+def Baseline_Freq_Bin(f, U, Cknob, eta, trim, Cstray, phi_const, DC_offset):
+    # Preamble
+    circ_consts = (3*10**(-8), 0.35, 619, 50, 10, 0.0343, 4.752*10**(-9), 50, 1.027*10**(-10), 2.542*10**(-7), 0, 0, 0, 0)
+    pi = np.pi
+    im_unit = 1j  
+    sign = 1
+
+    # Main constants
+    L0, Rcoil, R, R1, r, alpha, beta1, Z_cable, D, M, delta_C, delta_phi, delta_phase, delta_l = circ_consts
+
+    I = U*1000/R  # Ideal constant current, mA
+    
+    w_res = 2 * pi * 32e6
+    w_low = 2 * pi * (32 - 4) * 1e6
+    w_high = 2 * pi * (32 + 4) * 1e6
+    delta_w = 2 * pi * 4e6 / 500
+
+    # Convert input frequency array to angular frequency (rad/s)
+    w = 2 * pi * f * 1e6
+
+    # Functions
+    def slope():
+        return delta_C / (0.25 * 2 * pi * 1e6)
+
+    def slope_phi():
+        return delta_phi / (0.25 * 2 * pi * 1e6)
+
+    def Ctrim(w):
+        return slope() * (w - w_res)
+
+    def Cmain():
+        return 20 * 1e-12 * Cknob
+
+    def C(w):
+        return Cmain() + Ctrim(w) * 1e-12
+
+    def Z0(w):
+        S = 2 * Z_cable * alpha
+        with np.errstate(divide='ignore', invalid='ignore'):
+            result = np.sqrt((S + w * M * im_unit) / (w * D * im_unit))
+        return np.where(w == 0, 0, result)  # Avoid invalid values for w=0
+
+    def beta(w):
+        return beta1 * w
+
+    def gamma(w):
+        return alpha + beta(w) * 1j  # Create a complex number using numpy
+
+    def ZC(w):
+        Cw = C(w)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            result = np.where(Cw != 0, 1 / (im_unit * w * Cw), 0)
+        return np.where(w == 0, 0, result)  # Avoid invalid values for w=0
+
+    def vel(w):
+        return 1 / beta(w)
+
+    def l(w):
+        return trim * vel(w_res) + delta_l
+
+    def ic(w):
+        return 0.11133
+
+    def chi(w):
+        return np.zeros_like(w)  # Placeholder for x1(w) and x2(w)
+
+    def pt(w):
+        return ic(w)
+
+    def L(w):
+        return L0 * (1 + sign * 4 * pi * eta * pt(w) * chi(w))
+
+    def ZLpure(w):
+        return im_unit * w * L(w) + Rcoil
+
+    def Zstray(w):
+        with np.errstate(divide='ignore', invalid='ignore'):
+            result = np.where(Cstray != 0, 1 / (im_unit * w * Cstray), 0)
+        return np.where(w == 0, 0, result)  # Avoid invalid values for w=0
+
+    def ZL(w):
+        return ZLpure(w) * Zstray(w) / (ZLpure(w) + Zstray(w))
+
+    def ZT(w):
+        epsilon = 1e-10  # Small constant to avoid division by zero
+        return Z0(w) * (ZL(w) + Z0(w) * np.tanh(gamma(w) * l(w))) / (Z0(w) + ZL(w) * np.tanh(gamma(w) * l(w)) + epsilon)
+
+    def Zleg1(w):
+        return r + ZC(w) + ZT(w)
+
+    def Ztotal(w):
+        return R1 / (1 + (R1 / Zleg1(w)))
+
+    def parfaze(w):
+        xp1 = w_low
+        xp2 = w_res
+        xp3 = w_high
+        yp1 = 0
+        yp2 = delta_phase
+        yp3 = 0
+
+        a = ((yp1 - yp2) * (w_low - w_high) - (yp1 - yp3) * (w_low - w_res)) / \
+            (((w_low ** 2) - (w_res ** 2)) * (w_low - w_high) - ((w_low ** 2) - (w_high ** 2)) * (w_low - w_res))
+        bb = (yp1 - yp3 - a * ((w_low ** 2) - (w_high ** 2))) / (w_low - w_high)
+        c = yp1 - a * (w_low ** 2) - bb * w_low
+        return a * w ** 2 + bb * w + c
+
+    def phi_trim(w):
+        return slope_phi() * (w - w_res) + parfaze(w)
+
+    def phi(w):
+        return phi_trim(w) + phi_const
+
+    def V_out(w):
+        return -1 * (I * Ztotal(w) * np.exp(im_unit * phi(w) * pi / 180))
+
+    # Calculate output for input frequency range
+    out_y = V_out(w)
+    raw_output = np.array([x - min(out_y.real) for x in out_y.real])
+    
+    # Create 500 bins from w_low to w_high
+    bin_edges = np.linspace(w_low, w_high, 501)
+    bin_centers = 0.5 * (bin_edges[:-1] + bin_edges[1:])
+    
+    # Convert w to frequency in MHz for binning reference
+    f_MHz = w / (2 * pi * 1e6)
+    
+    # Apply bin shifting to reduce binning error
+    binned_output = np.zeros(500)
+    bin_counts = np.zeros(500)
+    
+    # Calculate bin index for each frequency with potential fractional part
+    # bin_indices_float = 500 * (w - w_low) / (w_high - w_low)
+    
+    for i, freq in enumerate(w):
+        # Skip frequencies outside our range of interest
+        if freq < w_low or freq > w_high:
+            continue
+            
+        # Calculate the bin position with fractional part
+        bin_pos = (freq - w_low) / (w_high - w_low) * 500
+        
+        # Get integer bin index and fractional part
+        bin_idx = int(bin_pos)
+        fraction = bin_pos - bin_idx
+        
+        # Handle edge case for last bin
+        if bin_idx >= 500:
+            bin_idx = 499
+            fraction = 0
+            
+        # Distribute value between two adjacent bins based on fractional position
+        # This is the bin shifting to reduce binning error
+        if bin_idx < 499:  # Not the last bin
+            binned_output[bin_idx] += raw_output[i] * (1 - fraction)
+            binned_output[bin_idx + 1] += raw_output[i] * fraction
+            bin_counts[bin_idx] += (1 - fraction)
+            bin_counts[bin_idx + 1] += fraction
+        else:  # Last bin
+            binned_output[bin_idx] += raw_output[i]
+            bin_counts[bin_idx] += 1
+    
+    # Normalize bins by count to avoid bias from uneven sample distribution
+    for i in range(500):
+        if bin_counts[i] > 0:
+            binned_output[i] /= bin_counts[i]
+    
+    # Apply DC offset to final output
+    final_output = binned_output + DC_offset
+    
+    return final_output, bin_centers 
+
+
+# Example frequency range (in MHz)
+freq_range,_,_ = FrequencyBound(32.2)
+
+
+print(freq_range)
+# Common baseline parameters
+U = 2.4283
+eta = 1.04e-2
+phi = 6.1319
+Cstray = 10**(-20)
+shift = 0
+
+# Mode-specific default parameters
+Cknob = 0.1899
+trim = 6/2
+center_freq = 32.32
+# Call the function with your parameters
+binned_output, bin_centers = Baseline_Freq_Bin(freq_range, U, Cknob, eta, 
+                                     trim, Cstray, phi, shift)
+
+from matplotlib import pyplot as plt
+
+plt.plot(np.linspace(0,1,500), binned_output)
+plt.show()
+
 
 # @tf.function
 def BaselineTensor(f, U, Cknob, eta, trim, Cstray, phi_const, DC_offset):

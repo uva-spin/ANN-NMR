@@ -16,6 +16,11 @@ import matplotlib.cm as cm
 from scipy.optimize import curve_fit
 import glob  # Import glob to find files
 import datetime
+import optuna
+from optuna.integration import TFKerasPruningCallback
+from optuna.trial import TrialState
+import pickle
+
 # Add path to custom scripts
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -40,54 +45,67 @@ R = np.linspace(-3.5, 3.5, samples)
 P_center = 0.0005
 P_range = 0.0001
 num_steps = 10
-P_values = np.linspace(P_center - P_range, P_center + P_range, num_steps)
+# P_values = np.linspace(P_center - P_range, P_center + P_range, num_steps)
+P_values = [0.00055]
 
 # Generate the reference lineshape at P = 0.0005
 reference_P = 0.0005
 reference_X, _, _ = GenerateLineshape(reference_P, R)
 reference_X_log = np.log(reference_X)
 
-def create_model(errF, input_shape=(1,)):
-
-    inputs = keras.Input(shape=input_shape)
-    
-    x = layers.Dense(256, activation=None, kernel_regularizer=regularizers.l2(0.001))(inputs)
-    x = layers.BatchNormalization()(x)
-    x = layers.Activation('swish')(x)
-    
-    for units in [128, 64, 32]:
-
-        y = layers.Dense(units, activation=None, kernel_regularizer=regularizers.l2(0.001))(x)
-        y = layers.BatchNormalization()(y)
-        y = layers.Activation('swish')(y)
-        y = layers.Dense(units, activation=None, kernel_regularizer=regularizers.l2(0.001))(y)
-        y = layers.BatchNormalization()(y)
+def create_model(errF, trial=None, input_shape=(1,)):
+    # If trial is None, use default hyperparameters
+    if trial is None:
+        # Default architecture
+        model = keras.Sequential([
+            layers.Input(shape=(1,)),  
+            layers.Dense(64, activation=tf.nn.swish, kernel_regularizer=regularizers.l2(0.001)),  
+            layers.Dropout(0.1),
+            layers.Dense(64, activation=tf.nn.swish, kernel_regularizer=regularizers.l2(0.001)),
+            layers.Dropout(0.1),
+            layers.Dense(32, activation=tf.nn.swish, kernel_regularizer=regularizers.l2(0.001)),
+            layers.Dropout(0.1),
+            layers.Dense(1)  
+        ])
+    else:
+        # Use Optuna to suggest hyperparameters
+        n_layers = trial.suggest_int("n_layers", 1, 5)
+        l2_reg = trial.suggest_float("l2_reg", 1e-5, 1e-2, log=True)
+        dropout_rate = trial.suggest_float("dropout_rate", 0.0, 0.5)
+        activation = trial.suggest_categorical("activation", ["swish", "relu", "elu"])
         
-        if x.shape[-1] != units:
-            x = layers.Dense(units, kernel_regularizer=regularizers.l2(0.001))(x)
+        # Get activation function
+        if activation == "swish":
+            act_fn = tf.nn.swish
+        elif activation == "relu":
+            act_fn = tf.nn.relu
+        else:
+            act_fn = tf.nn.elu
         
-        # Add skip connection
-        x = layers.Add()([x, y])
-        x = layers.Activation('swish')(x)
-        x = layers.Dropout(0.1)(x)
+        # Build model with suggested hyperparameters
+        model = keras.Sequential()
+        model.add(layers.Input(shape=(1,)))
+        
+        # Add layers based on Optuna suggestions
+        for i in range(n_layers):
+            units = trial.suggest_int(f"units_l{i}", 16, 256, log=True)
+            model.add(layers.Dense(units, activation=act_fn, 
+                                  kernel_regularizer=regularizers.l2(l2_reg)))
+            model.add(layers.Dropout(dropout_rate))
+        
+        # Output layer
+        model.add(layers.Dense(1))
     
-    # Final output layer
-    outputs = layers.Dense(1)(x)
-    
-    model = keras.Model(inputs=inputs, outputs=outputs)
-    
-    def Loss(y_true, y_pred, errF):
-        errF = tf.convert_to_tensor(errF, dtype=tf.float32)
+    def Loss(y_true, y_pred):
+        errF_tensor = tf.convert_to_tensor(errF, dtype=tf.float32)
         squared_diff = tf.square(y_true - y_pred)
         
-        # # Basic binned MSE
-        loss = tf.reduce_mean(squared_diff / tf.square(errF))
+        # Basic binned MSE
+        loss = tf.reduce_mean(squared_diff / (tf.square(errF_tensor) + tf.keras.backend.epsilon()))
         
         return loss 
     
     def lineshape_accuracy(y_true, y_pred):
-
-
         y_true_flat = tf.reshape(y_true, [-1])
         y_pred_flat = tf.reshape(y_pred, [-1])
         
@@ -104,14 +122,19 @@ def create_model(errF, input_shape=(1,)):
         similarity = 1.0 - tf.reduce_mean(tf.abs(y_true_norm - y_pred_norm))
         return similarity
         
-    loss_function = Loss(errF)
+    # Optimizer parameters
+    if trial is None:
+        initial_learning_rate = 0.01
+        weight_decay = 1e-5
+    else:
+        initial_learning_rate = trial.suggest_float("learning_rate", 1e-5, 1e-1, log=True)
+        weight_decay = trial.suggest_float("weight_decay", 1e-6, 1e-3, log=True)
     
-    initial_learning_rate = 0.01
     model.compile(
         optimizer=keras.optimizers.AdamW(
-        learning_rate=initial_learning_rate,
-        weight_decay=1e-5),
-        loss=loss_function,
+            learning_rate=initial_learning_rate,
+            weight_decay=weight_decay),
+        loss=Loss,
         metrics=[lineshape_accuracy])
     
     return model
@@ -132,16 +155,105 @@ predicted_lineshapes = []
 models_dir = os.path.join(current_dir, 'varied_p_models')
 os.makedirs(models_dir, exist_ok=True)
 
+def objective(trial):
+    # Create model with trial suggestions
+    model = create_model(errF, trial)
+    
+    # Callbacks for Optuna
+    early_stopping = tf.keras.callbacks.EarlyStopping(
+        monitor='val_loss',
+        patience=20,
+        min_delta=1e-8,
+        mode='min',
+        restore_best_weights=True
+    )
+    
+    pruning_callback = TFKerasPruningCallback(trial, 'val_loss')
+    
+    # Train the model
+    R_reshaped = R.reshape(-1, 1)
+    history = model.fit(
+        R_reshaped, X,
+        epochs=100,  # Reduced for faster trials
+        batch_size=trial.suggest_categorical("batch_size", [16, 32, 64, 128]),
+        validation_split=0.2,
+        callbacks=[early_stopping, pruning_callback],
+        verbose=0
+    )
+    
+    # Return the best validation loss
+    return history.history['val_loss'][-1]
+
+# Run Optuna optimization
+def run_optuna_optimization():
+    study = optuna.create_study(direction="minimize", pruner=optuna.pruners.MedianPruner())
+    study.optimize(objective, n_trials=50)  # Adjust number of trials as needed
+    
+    print("Number of finished trials: ", len(study.trials))
+    print("Best trial:")
+    trial = study.best_trial
+    
+    print("  Value: ", trial.value)
+    print("  Params: ")
+    for key, value in trial.params.items():
+        print(f"    {key}: {value}")
+    
+    # Create and train the best model
+    best_model = create_model(errF, trial)
+    
+    # Standard callbacks
+    early_stopping = tf.keras.callbacks.EarlyStopping(
+        monitor='val_loss',
+        patience=30,
+        min_delta=1e-8,
+        mode='min',
+        restore_best_weights=True
+    )
+    
+    reduce_lr = tf.keras.callbacks.ReduceLROnPlateau(
+        monitor='val_loss',
+        factor=0.5,
+        patience=10,
+        min_lr=1e-6,
+        verbose=1
+    )
+    
+    R_reshaped = R.reshape(-1, 1)
+    
+    # Train the best model with full epochs
+    history = best_model.fit(
+        R_reshaped, X,
+        epochs=1000,  
+        batch_size=trial.params["batch_size"],
+        validation_split=0.2,
+        callbacks=[early_stopping, reduce_lr],
+        verbose=1
+    )
+    
+    return best_model, study
+
+print("Starting hyperparameter optimization...")
+best_model, study = run_optuna_optimization()
+
+# Save the best model
+best_model_path = os.path.join(models_dir, f'best_model_p_{p_value:.7f}.keras')
+best_model.save(best_model_path)
+
+# Save study results
+study_path = os.path.join(current_dir, 'optuna_study_results.pkl')
+with open(study_path, 'wb') as f:
+    pickle.dump(study, f)
+
 for i, p_value in enumerate(tqdm(P_values, desc="Training models")):
     print(f"\nTraining model {i+1}/{num_steps} with P = {p_value:.7f}")
     
     X, _, _ = GenerateLineshape(p_value, R)
-    X_log = np.log(X) + np.random.normal(0, 0.1, size=X.shape)
+    X += np.random.normal(0, 0.005, size=X.shape)
     
-    X_log_reshaped = X_log
+    X = X.reshape(-1, 1)
     
     
-    _, errF, _ = calculate_binned_errors(X_log_reshaped, num_bins=10000)
+    _, errF, _ = calculate_binned_errors(X, num_bins=10000)
     
     
     model = create_model(errF)
@@ -166,8 +278,8 @@ for i, p_value in enumerate(tqdm(P_values, desc="Training models")):
     
     # Train the model
     history = model.fit(
-        R_reshaped, X_log_reshaped,
-        epochs=100,  
+        R_reshaped, X,
+        epochs=10,  
         batch_size=32,
         validation_split=0.2,
         callbacks=[early_stopping, lr_scheduler, reduce_lr],
@@ -181,8 +293,8 @@ for i, p_value in enumerate(tqdm(P_values, desc="Training models")):
     
     x_new = np.linspace(-3, 3, 10000)  
     x_new_reshaped = x_new.reshape(-1, 1)
-    predictions_log = model.predict(x_new_reshaped, verbose=0)
-    predictions = np.exp(predictions_log)
+    predictions = model.predict(x_new_reshaped, verbose=0)
+    # predictions = np.exp(predictions)
     
     all_predictions.append(predictions.flatten())
     
@@ -410,3 +522,5 @@ def save_results_to_file(P_true=None, filename="optimization_results_NN.txt"):
 
 
 save_results_to_file(P_true = P_values, filename=os.path.join(current_dir, "NN_Optimization_Results.txt"))
+
+    
