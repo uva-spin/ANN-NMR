@@ -39,79 +39,78 @@ if physical_devices:
 tf.keras.backend.set_floatx('float64')
 
 # File paths and versioning
-data_path = find_file("Deuteron_Low_Oversampled_1M.csv")  
-version = 'Deuteron_Low_ResNet_Optuna_V2'  
+data_path = find_file("Deuteron_Oversampled_1M.csv")  
+version = 'Deuteron_Low_ResNet_Optuna_V4'  
 performance_dir = f"Model Performance/{version}"  
 model_dir = f"Models/{version}"  
 os.makedirs(performance_dir, exist_ok=True)
 os.makedirs(model_dir, exist_ok=True)
 
-### Defining a custom loss function here for precision
-# @tf.keras.utils.register_keras_serializable() 
-# class HighPrecisionLoss(tf.keras.losses.Loss):
-#     def __init__(self, alpha=1.0, beta=10.0, gamma=5.0, epsilon=1e-10, 
-#                  reduction='sum_over_batch_size', name="high_precision_loss"):
-#         """
-#         Args:
-#             alpha (float): Weight for the relative error component
-#             beta (float): Weight for the absolute error component
-#             gamma (float): Weight for the log-space error component
-#             epsilon (float): Small constant to prevent division by zero
-#             reduction: Type of reduction to apply to the loss
-#             name: Name of the loss function
-#         """
-#         super().__init__(reduction=reduction, name=name)
-#         self.alpha = alpha
-#         self.beta = beta
-#         self.gamma = gamma
-#         self.epsilon = epsilon
-        
-#     def call(self, y_true, y_pred):
-
-#         y_pred = tf.clip_by_value(y_pred, self.epsilon, float('inf'))
-        
-#         # Relative error component (scale-invariant)
-#         relative_error = tf.abs(y_pred - y_true) / (y_true + self.epsilon)
-        
-#         # Absolute error component (important for very small values)
-#         absolute_error = self.beta * tf.abs(y_pred - y_true)
-        
-#         # Log-space error component (emphasizes relative differences in small values)
-#         log_predictions = tf.math.log(y_pred + self.epsilon)
-#         log_targets = tf.math.log(y_true + self.epsilon)
-#         log_space_error = self.gamma * tf.abs(log_predictions - log_targets)
-        
-#         combined_loss = (
-#             self.alpha * relative_error + 
-#             absolute_error + 
-#             log_space_error
-#         )
-        
-#         return combined_loss
-
-    # def get_config(self):
-    #     config = super().get_config()
-    #     config.update({
-    #         "alpha": self.alpha,
-    #         "beta": self.beta,
-    #         "gamma": self.gamma,
-    #         "epsilon": self.epsilon
-    #     })
-    #     return config
-    
-    
-    
+## Defining a custom loss function here for precision
 @tf.keras.utils.register_keras_serializable() 
-def Precision_Loss(y_true, y_pred):
-    error = y_true - y_pred
-    mean_loss = tf.reduce_mean(tf.abs(error))  # MAE in scaled space
-    std_loss = tf.math.reduce_std(error)       # Penalize higher sigma
-    
-    # Calculate per-sample relative error
-    relative_error = tf.abs(error / (y_true + 1e-8))  # Prevent division by zero
-    total_relative_loss = tf.reduce_sum(relative_error) 
+class HighPrecisionLoss(tf.keras.losses.Loss):
+    def __init__(self, alpha=1.0, beta=10.0, gamma=5.0, epsilon=1e-10, 
+                 reduction='sum_over_batch_size', name="high_precision_loss"):
+        """
+        Args:
+            alpha (float): Weight for the relative error component
+            beta (float): Weight for the absolute error component
+            gamma (float): Weight for the log-space error component
+            epsilon (float): Small constant to prevent division by zero
+            reduction: Type of reduction to apply to the loss
+            name: Name of the loss function
+        """
+        super().__init__(reduction=reduction, name=name)
+        self.alpha = alpha
+        self.beta = beta
+        self.gamma = gamma
+        self.epsilon = epsilon
+        
+    def call(self, y_true, y_pred):
 
-    return mean_loss + 5 * std_loss  + 5 * 1e-4 * total_relative_loss 
+        y_pred = tf.clip_by_value(y_pred, self.epsilon, float('inf'))
+        
+        # Relative error component (scale-invariant)
+        relative_error = tf.abs(y_pred - y_true) / (y_true + self.epsilon)
+        
+        # Absolute error component (important for very small values)
+        absolute_error = self.beta * tf.abs(y_pred - y_true)
+        
+        # Log-space error component (emphasizes relative differences in small values)
+        log_predictions = tf.math.log(y_pred + self.epsilon)
+        log_targets = tf.math.log(y_true + self.epsilon)
+        log_space_error = self.gamma * tf.abs(log_predictions - log_targets)
+        
+        combined_loss = (
+            self.alpha * relative_error + 
+            absolute_error + 
+            log_space_error
+        )
+        
+        return combined_loss
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({
+            "alpha": self.alpha,
+            "beta": self.beta,
+            "gamma": self.gamma,
+            "epsilon": self.epsilon
+        })
+        return config
+    
+    
+    
+# @tf.keras.utils.register_keras_serializable() 
+# def Precision_Loss(y_true, y_pred):
+#     error = y_true - y_pred
+#     mean_loss = tf.reduce_mean(tf.abs(error))  
+#     std_loss = tf.math.reduce_std(error)       
+    
+#     relative_error = tf.abs(error / (y_true + 1e-8))  
+#     total_relative_loss = tf.reduce_sum(relative_error) 
+
+#     return mean_loss + 5 * std_loss  + 5 * 1e-4 * total_relative_loss 
 
 
 def residual_block(x, units, l1_reg=0.0, l2_reg=0.01, dropout_rate=0.2, Momentum=0.99, Epsilon=1e-5):
@@ -178,10 +177,12 @@ def Polarization_Model(params):
         epsilon=params['epsilon'],
         clipnorm=params['clipnorm'],
     )
+    
+    loss = HighPrecisionLoss(alpha=params['alpha'], beta=params['beta'], gamma=params['gamma'])
 
     model.compile(
         optimizer=optimizer,
-        loss=Precision_Loss,
+        loss=loss,
         metrics=[tf.keras.metrics.MeanAbsoluteError(name='mae')]
     )
     return model
@@ -216,9 +217,9 @@ def objective(trial):
         # 'input_noise_stddev': trial.suggest_float('input_noise_stddev', 0.001, 0.1),
         'hidden_noise_stddev': trial.suggest_float('hidden_noise_stddev', 0.001, 0.1),
         'output_noise_stddev': trial.suggest_float('output_noise_stddev', 0.001, 0.1),
-        # 'Alpha': trial.suggest_float('Alpha', 0.0, 10.0),
-        # 'Beta': trial.suggest_float('Beta', 0.0, 10.0),
-        # 'Gamma': trial.suggest_float('Gamma', 0.0, 10.0),
+        'alpha': trial.suggest_float('alpha', 0.0, 10.0),
+        'beta': trial.suggest_float('beta', 0.0, 10.0),
+        'gamma': trial.suggest_float('gamma', 0.0, 10.0),
     }
     
     model = Polarization_Model(params)
@@ -279,35 +280,41 @@ y_test = test_data["P"].astype('float64').values
 print("Features and targets prepared successfully")
 
 print("Normalizing data...")
-scaler = MinMaxScaler().fit(X_train)
-X_train = scaler.transform(X_train).astype('float64')
+
+
+scaler = MinMaxScaler()
+X_train = scaler.fit_transform(X_train).astype('float64')
 X_val = scaler.transform(X_val).astype('float64')
 X_test = scaler.transform(X_test).astype('float64')
 
-y_train = y_train.reshape(-1, 1)
-y_val = y_val.reshape(-1, 1)
-y_test = y_test.reshape(-1, 1)
+y_train = y_train.reshape(-1, 1)*100
+y_val = y_val.reshape(-1, 1)*100
+y_test = y_test.reshape(-1, 1)*100
+
 
 target_scaler = MinMaxScaler()
-y_train_scaled = target_scaler.fit_transform(y_train)
-y_val_scaled = target_scaler.transform(y_val)
-y_test_scaled = target_scaler.transform(y_test)
+y_train_scaled = target_scaler.fit_transform(y_train).astype('float64')
+y_val_scaled = target_scaler.transform(y_val).astype('float64')
+y_test_scaled = target_scaler.transform(y_test).astype('float64')
 print("Data normalized successfully")
 
 
 batch_size = 256  
 
-train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train))
+train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train_scaled))
 train_dataset = train_dataset.shuffle(buffer_size=len(X_train))  
 train_dataset = train_dataset.batch(batch_size)  
+train_dataset = train_dataset.cache()
 train_dataset = train_dataset.prefetch(tf.data.experimental.AUTOTUNE)  
 
-val_dataset = tf.data.Dataset.from_tensor_slices((X_val, y_val))
-val_dataset = val_dataset.batch(batch_size)  
+val_dataset = tf.data.Dataset.from_tensor_slices((X_val, y_val_scaled))
+val_dataset = val_dataset.batch(batch_size) 
+val_dataset = val_dataset.cache()
 val_dataset = val_dataset.prefetch(tf.data.experimental.AUTOTUNE)  
 
-test_dataset = tf.data.Dataset.from_tensor_slices((X_test, y_test))
+test_dataset = tf.data.Dataset.from_tensor_slices((X_test, y_test_scaled))
 test_dataset = test_dataset.batch(batch_size)  
+test_dataset = test_dataset.cache()
 test_dataset = test_dataset.prefetch(tf.data.experimental.AUTOTUNE)  
 
 
@@ -329,7 +336,7 @@ if __name__ == "__main__":
             storage=storage,
             load_if_exists=True
             )
-        study.optimize(objective, n_trials=50)  
+        study.optimize(objective, n_trials=1)  
         
         print("Best trial:")
         trial = study.best_trial
@@ -364,9 +371,9 @@ if __name__ == "__main__":
             # 'input_noise_stddev': trial.params['input_noise_stddev'],
             'hidden_noise_stddev': trial.params['hidden_noise_stddev'],
             'output_noise_stddev': trial.params['output_noise_stddev'],
-            # 'Alpha': trial.params['Alpha'],
-            # 'Beta': trial.params['Beta'],
-            # 'Gamma': trial.params['Gamma'],
+            'alpha': trial.params['alpha'],
+            'beta': trial.params['beta'],
+            'gamma': trial.params['gamma'],
         }
         
         with open(os.path.join(performance_dir, 'best_params.json'), 'w') as f:
@@ -413,23 +420,28 @@ if __name__ == "__main__":
         )
         
         y_test_pred = final_model.predict(test_dataset) 
-        y_test_pred = target_scaler.inverse_transform(y_test_pred)
+        # y_test_pred = y_test_pred.flatten()
+        # y_test = y_test.flatten()
+        y_test_pred = target_scaler.inverse_transform(y_test_pred).flatten() / 100
+        y_test = target_scaler.inverse_transform(y_test).flatten() / 100
         residuals = y_test - y_test_pred
         
         rpe = np.abs((y_test - y_test_pred) / np.abs(y_test)) * 100
         
         plot_rpe_and_residuals(y_test, y_test_pred, performance_dir, version)
         plot_enhanced_results(y_test, y_test_pred, performance_dir, version)
-        
-        event_results_file = os.path.join(performance_dir, f'test_event_results_{version}.csv')
-        test_results_df = pd.DataFrame({
-            'Actual': y_test.round(6)*100,
-            'Predicted': y_test_pred.round(6)*100,
-            'Residuals': residuals.round(6)*100,
-            'RPE': rpe.round(6)
-        })
-        test_results_df.to_csv(event_results_file, index=False)
-        
+                
+        event_results_file = os.path.join(performance_dir, f'test_event_results_{version}.npy')
+
+        results = {
+            'Actual': y_test.flatten().round(6) * 100, 
+            'Predicted': y_test_pred.flatten().round(6) * 100, 
+            'Residuals': residuals.flatten().round(6) * 100,  
+            'RPE': rpe.flatten().round(6)  
+        }
+
+        np.save(event_results_file, results)
+
         print(f"Test results saved to {event_results_file}")
         
         save_model_summary(final_model, performance_dir, version)

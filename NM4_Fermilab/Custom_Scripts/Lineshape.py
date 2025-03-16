@@ -488,33 +488,6 @@ def Baseline_Freq_Bin(f, U, Cknob, eta, trim, Cstray, phi_const, DC_offset):
     
     return final_output, bin_centers 
 
-
-# Example frequency range (in MHz)
-freq_range,_,_ = FrequencyBound(32.2)
-
-
-print(freq_range)
-# Common baseline parameters
-U = 2.4283
-eta = 1.04e-2
-phi = 6.1319
-Cstray = 10**(-20)
-shift = 0
-
-# Mode-specific default parameters
-Cknob = 0.1899
-trim = 6/2
-center_freq = 32.32
-# Call the function with your parameters
-binned_output, bin_centers = Baseline_Freq_Bin(freq_range, U, Cknob, eta, 
-                                     trim, Cstray, phi, shift)
-
-from matplotlib import pyplot as plt
-
-plt.plot(np.linspace(0,1,500), binned_output)
-plt.show()
-
-
 # @tf.function
 def BaselineTensor(f, U, Cknob, eta, trim, Cstray, phi_const, DC_offset):
     
