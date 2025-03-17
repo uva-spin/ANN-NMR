@@ -899,7 +899,7 @@ def plot_training_history(history, output_dir, version_name):
     plt.figure(figsize=(12, 8))
     
     # Plot loss curves with improved styling
-    plt.plot(epochs, history['train_loss'], color=loss_palette[0], marker='o', markersize=4, 
+    plt.plot(epochs, history['loss'], color=loss_palette[0], marker='o', markersize=4, 
              label='Training Loss', alpha=0.9, markevery=max(1, len(epochs)//20))
     plt.plot(epochs, history['val_loss'], color=loss_palette[2], marker='s', markersize=4, 
              label='Validation Loss', alpha=0.9, markevery=max(1, len(epochs)//20))
@@ -911,7 +911,7 @@ def plot_training_history(history, output_dir, version_name):
                 marker='*', label=f'Best Val Loss: {min_val_loss:.6f}', zorder=5)
     
     # Set appropriate y-axis scale (log if the range is large)
-    if max(history['train_loss']) / (min(history['train_loss']) + 1e-10) > 10:
+    if max(history['loss']) / (min(history['loss']) + 1e-10) > 10:
         plt.yscale('log')
         plt.ylabel('Loss (log scale)', fontsize=12, fontweight='bold')
     else:
@@ -930,7 +930,7 @@ def plot_training_history(history, output_dir, version_name):
     plt.legend(loc='upper right', frameon=True, fancybox=True, framealpha=0.9, fontsize=10)
     
     # Add final loss values
-    final_train = history['train_loss'][-1]
+    final_train = history['loss'][-1]
     final_val = history['val_loss'][-1]
     loss_text = (f'Final Training Loss: {final_train:.6f}\n'
                 f'Final Validation Loss: {final_val:.6f}\n'
@@ -1079,9 +1079,9 @@ def plot_training_history(history, output_dir, version_name):
         best_metrics['Best Val RMSE'] = (min_val_rmse, min_val_rmse_epoch)
     
     # Add final values
-    best_metrics['Final Train Loss'] = (history['train_loss'][-1], len(epochs))
+    best_metrics['Final Train Loss'] = (history['loss'][-1], len(epochs))
     best_metrics['Final Val Loss'] = (history['val_loss'][-1], len(epochs))
-    best_metrics['Final Train MAE'] = (history['train_mae'][-1], len(epochs))
+    best_metrics['Final Train MAE'] = (history['mae'][-1], len(epochs))
     best_metrics['Final Val MAE'] = (history['val_mae'][-1], len(epochs))
     
     if 'train_rmse' in history:

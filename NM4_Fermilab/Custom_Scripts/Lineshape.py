@@ -541,6 +541,10 @@ def BaselineTensor(f, U, Cknob, eta, trim, Cstray, phi_const, DC_offset):
 
 
 def GenerateLineshape(P,x):
+    omega_d = 2*np.pi * 16.0 * 1e6 # MHz
+    omega_q = 0.159
+    ### Go from R to frequency R = (omega - omega_d)/(3*omega_q)
+    x = (3*omega_q*x + omega_d)
         
     def cosal(x,eps):
         return (1 -eps*x-s)/bigxsquare(x,eps)
@@ -567,7 +571,7 @@ def GenerateLineshape(P,x):
 
 
     def termone(x,eps):
-        return np.pi/2+np.arctan((bigy**2-bigxsquare(x,eps))/((2*bigy*(bigxsquare(x,eps))**0.5)*sinaltwo(x,eps)))
+        return (np.pi/2)+np.arctan((bigy**2-bigxsquare(x,eps))/((2*bigy*(bigxsquare(x,eps))**0.5)*sinaltwo(x,eps)))
 
 
     def termtwo(x,eps):
@@ -581,6 +585,15 @@ def GenerateLineshape(P,x):
     Iminus = icurve(x,-1)/10
     signal = Iplus + Iminus
     return signal,Iplus,Iminus
+
+
+# def Lineshape(P,x):
+    
+#     omega_d = 2*np.pi * 16.0 * 1e6 # MHz
+#     ### Go from R to frequency R = (omega - omega_d)/(3*omega_q)
+#     x = (3*omega_q*x + omega_d)
+#     def rho_squared(x):
+        
 
 def Sampling_Lineshape(P, x, bound):
     """Sampling the lineshape with a stochastic shift to frequency bins.
