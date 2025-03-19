@@ -1,269 +1,182 @@
 import numpy as np
 import pandas as pd
-import os
-import sys
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
-import datetime
 
-def perform_lineshape_fitting(output_dir=None, polarization_center=0.0005, polarization_range=0.0001, num_steps=10):
-    """
-    Perform lineshape fitting with parameter optimization and residual analysis.
-    
-    Parameters:
-    -----------
-    output_dir : str, optional
-        Directory to save results files. Defaults to current directory if None.
-    polarization_center : float, optional
-        Center value for polarization parameter range. Default is 0.0005.
-    polarization_range : float, optional
-        Range around center value for polarization parameter. Default is 0.0001.
-    num_steps : int, optional
-        Number of polarization values to test. Default is 10.
-    
-    Returns:
-    --------
-    dict
-        Dictionary containing results of the fitting process.
-    """
-    # Set default output directory to current directory if not provided
-    if output_dir is None:
-        output_dir = os.getcwd()
-        
-    sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-    from Custom_Scripts.Lineshape import GenerateLineshape
-    
-    
-    # Define X domain
-    X = np.linspace(-3, 3, 500)
-    
-    # Generate polarization values
-    P_values = np.linspace(polarization_center - polarization_range, 
-                           polarization_center + polarization_range, 
-                           num_steps)
-    
-    # Generate true lineshapes
-    Lineshapes_True = []
-    for P in P_values:
-        Line, _, _ = GenerateLineshape(P, X)
-        Lineshapes_True.append(Line)
-    
-    # Set initial parameters and bounds
-    initial_params = [0.00038, 0.00042, 0.00046, 0.000532, 0.0005443, 
-                      0.000556, 0.000568, 0.00058, 0.00062, 0.00062]
-    
-    # Adjust if num_steps doesn't match length of initial_params
-    if len(initial_params) != num_steps:
-        initial_params = np.linspace(P_values[0] * 0.9, P_values[-1] * 1.1, num_steps)
-    
-    lower_bounds = [p - 0.00005 for p in initial_params]
-    upper_bounds = [p + 0.00005 for p in initial_params]
-    param_bounds = (lower_bounds, upper_bounds)
-    
-    # Define fitting function
-    def Baseline(x, P):
-        Sig, _, _ = GenerateLineshape(P, x)
-        return Sig
-    
-    # Perform curve fitting
-    covs = []
-    popts = []
-    residuals = []
-    
-    for i, (lower_bound, upper_bound) in enumerate(zip(lower_bounds, upper_bounds)):
-        popt, pcov = curve_fit(Baseline, X, Lineshapes_True[i], 
-                               p0=initial_params[i], 
-                               bounds=(lower_bound, upper_bound))
-        covs.append(pcov)
-        popts.append(popt)
-        
-        # Calculate residuals
-        P_true = P_values[i]
-        P_opt = popt[0] if hasattr(popt, '__iter__') else popt
-        residual = (P_true - P_opt) * 100  # Converting to percentage
-        residuals.append(residual)
-        
-    # Calculate statistics for residuals
-    residual_mean = np.mean(residuals)
-    residual_std = np.std(residuals)
-    
-    # Plot histogram of residuals with Gaussian fit
-    plt.figure(figsize=(10, 6))
-    
-    # Create histogram
-    n, bins, patches = plt.hist(residuals, bins=min(10, num_steps), 
-                               color='skyblue', edgecolor='black', 
-                               alpha=0.7, density=True)
-    
-    # Fit a Gaussian curve to the histogram
-    def gaussian(x, mean, std, amplitude):
-        return amplitude * np.exp(-((x - mean) ** 2) / (2 * std ** 2))
-    
-    # Create x values for the Gaussian curve
-    bin_centers = (bins[:-1] + bins[1:]) / 2
-    bin_width = bins[1] - bins[0]
-    
-    # Initial guess for the fit
-    p0 = [residual_mean, residual_std, 1.0/(residual_std * np.sqrt(2 * np.pi))]
-    
-    try:
-        # Try to fit a Gaussian to the histogram data
-        params, covs_gauss = curve_fit(gaussian, bin_centers, n, p0=p0)
-        fitted_mean, fitted_std, amplitude = params
-        
-        # Create smooth curve for plotting
-        x_smooth = np.linspace(min(bins), max(bins), 100)
-        y_smooth = gaussian(x_smooth, fitted_mean, fitted_std, amplitude)
-        
-        # Plot the fitted Gaussian curve
-        plt.plot(x_smooth, y_smooth, 'r-', linewidth=2, 
-                 label=f'Gaussian Fit\nMean = {fitted_mean:.5f}\nStd Dev = {fitted_std:.5f}')
-        
-        # Store the fitted parameters
-        gauss_fit_params = {
-            'mean': fitted_mean,
-            'std_dev': fitted_std,
-            'amplitude': amplitude
-        }
-    except:
-        # If fitting fails, use the calculated statistics
-        plt.axvline(residual_mean, color='r', linestyle='--', 
-                   label=f'Mean = {residual_mean:.5f}')
-        plt.axvline(residual_mean + residual_std, color='g', linestyle=':', 
-                   label=f'±Std Dev = {residual_std:.5f}')
-        plt.axvline(residual_mean - residual_std, color='g', linestyle=':')
-        
-        gauss_fit_params = {
-            'mean': residual_mean,
-            'std_dev': residual_std,
-            'amplitude': None,
-            'note': 'Gaussian fitting failed, using sample statistics'
-        }
-    
-    plt.xlabel('Residual (P_true - P_optimized) × 100')
-    plt.ylabel('Probability Density')
-    plt.title('Histogram of Fitting Residuals with Gaussian Fit')
-    plt.grid(alpha=0.3)
-    plt.legend()
-    
-    # Save histogram with Gaussian fit
-    histogram_path = os.path.join(output_dir, "residuals_histogram_with_gaussian.png")
-    plt.savefig(histogram_path)
-    plt.close()
-    
-    # Save results to file
-    results_path = os.path.join(output_dir, "Chi2_Results.txt")
-    with open(results_path, 'w') as f:
-        # Write header
-        f.write("="*50 + "\n")
-        f.write("OPTIMIZATION RESULTS\n")
-        f.write("="*50 + "\n\n")
-        
-        # Write optimized parameters
-        f.write("OPTIMIZED PARAMETERS:\n")
-        f.write("-"*50 + "\n")
-        for i, (P_true, param_value) in enumerate(zip(P_values, popts)):
-            # Handle both single value and array cases
-            if hasattr(param_value, '__iter__') and not isinstance(param_value, str):
-                formatted_value = f"{param_value[0]:.8f}"
-            else:
-                formatted_value = f"{param_value:.8f}"
-            
-            f.write(f"Parameter {i+1}: {P_true} = {formatted_value}\n")
-        f.write("-"*50 + "\n\n")
-        
-        # Write residuals
-        f.write("RESIDUALS (P_true - P_optimized):\n")
-        f.write("-"*50 + "\n")
-        for i, (P_true, opt_val) in enumerate(zip(P_values, popts)):
-            # Handle both single value and array cases for optimized values
-            if hasattr(opt_val, '__iter__') and not isinstance(opt_val, str):
-                opt_val = opt_val[0]
-            
-            # Calculate residual
-            residual = P_true - opt_val
-            percent_error = (residual / P_true) * 100 if P_true != 0 else float('inf')
-            
-            f.write(f"Parameter {i+1}: {P_true}\n")
-            f.write(f"    True value:      {P_true:.8f}\n")
-            f.write(f"    Optimized value: {opt_val:.8f}\n")
-            f.write(f"    Residual:        {residual:.8f}\n")
-            f.write(f"    Percent error:   {percent_error:.4f}%\n\n")
-        f.write("-"*50 + "\n\n")
-        
-        # Write covariance matrices
-        f.write("COVARIANCE MATRICES:\n")
-        f.write("-"*50 + "\n")
-        for i, cov in enumerate(covs):
-            f.write(f"\nMatrix {i+1} (Parameter: {P_values[i]}):\n")
-            # Check the type of cov and handle accordingly
-            if np.isscalar(cov):
-                # If it's a scalar value
-                f.write(f"    {cov:.8e}\n")
-            elif isinstance(cov, (list, np.ndarray)):
-                # If it's an array or matrix
-                if hasattr(cov, 'shape') and len(cov.shape) == 2:
-                    # For 2D matrices
-                    for row in cov:
-                        formatted_row = "    " + " ".join([f"{val:.4e}" for val in row])
-                        f.write(formatted_row + "\n")
-                else:
-                    # For 1D arrays or other structures
-                    f.write(f"    {cov}\n")
-            else:
-                # Fallback for any other type
-                f.write(f"    {cov}\n")
-        f.write("-"*50 + "\n")
-        
-        f.write("\n\nFile generated on: " + datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-    
-    print(f"Results saved to '{results_path}'")
-    print(f"Histogram saved to '{histogram_path}'")
-    
-    # Return results
-    return {
-        "P_values": P_values,
-        "optimized_params": popts,
-        "covariance_matrices": covs,
-        "residuals": residuals,
-        "results_file": results_path,
-        "histogram_file": histogram_path
-    }
+# Load the baseline data from the CSV file
+baseline_data = pd.read_csv('Error_Analysis/2024-05-24_18h48m21s-RawSignal.csv')
 
-if __name__ == "__main__":
-    # Set the output directory to be the same as the script directory
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    perform_lineshape_fitting(output_dir=script_dir)
+baseline_data = baseline_data.iloc[:,1:]
+
+baseline_data = baseline_data.iloc[6]
+
+# Define the domain to fit (bins 100 to 400)
+fit_start_bin, fit_end_bin = 0, 500
+
+# Frequency conversion factors
+bin_to_freq = 0.0015287  # MHz per bin
+start_freq = 32.7  # Starting frequency in MHz
+
+# Create an independent variable (frequency in MHz) and extract the relevant data
+x_full_bins = np.arange(500)  # Full range of bins
+x_full_freq = start_freq + x_full_bins * bin_to_freq  # Convert bins to frequency
+
+y_full = baseline_data.values  # Full range of data
+yerr_full = 0.0005  # Assuming a constant error, or replace with an array if errors are variable
+
+# Restrict to the domain of interest (bins 100 to 400)
+x_bins = x_full_bins[fit_start_bin:fit_end_bin+1]
+x_freq = x_full_freq[fit_start_bin:fit_end_bin+1]
+y = y_full[fit_start_bin:fit_end_bin+1]
+
+# Define the Baseline function with frequency as input
+def Baseline(f, U, Cknob, eta, trim, Cstray, phi_const, DC_Offset, alpha, beta):
+    # Preamble
+    circ_consts = (3*10**(-8), 0.35, 619, 50, 10, 0.0343, 4.752*10**(-9), 50, 1.027*10**(-10), 2.542*10**(-7), 0, 0, 0, 0)
+    pi = np.pi
+    im_unit = 1j  # Use numpy's complex unit (1j)
+    sign = 1
+
+    # Main constants
+    L0, Rcoil, R, R1, r, alpha, beta1, Z_cable, D, M, delta_C, delta_phi, delta_phase, delta_l = circ_consts
+
+    I = U*1000/R  # Ideal constant current, mA
+    w_res = 2 * pi * 213e6
+    w_low = 2 * pi * (213 - 4) * 1e6
+    w_high = 2 * pi * (213 + 4) * 1e6
+    delta_w = 2 * pi * 4e6 / 500
+
+    # Convert frequency to angular frequency (rad/s)
+    w = 2 * pi * f * 1e6
+
+    # Functions
+    def slope():
+        return delta_C / (0.25 * 2 * pi * 1e6)
+
+    def slope_phi():
+        return delta_phi / (0.25 * 2 * pi * 1e6)
+
+    def Ctrim(w):
+        return slope() * (w - w_res)
+
+    def Cmain():
+        return 20 * 1e-12 * Cknob
+
+    def C(w):
+        return Cmain() + Ctrim(w) * 1e-12
+
+    def Z0(w):
+        S = 2 * Z_cable * alpha
+        with np.errstate(divide='ignore', invalid='ignore'):
+            result = np.sqrt((S + w * M * im_unit) / (w * D * im_unit))
+        return np.where(w == 0, 0, result)  # Avoid invalid values for w=0
+
+    def beta(w):
+        return beta1 * w
+
+    def gamma(w):
+        return alpha + beta(w) * 1j  # Create a complex number using numpy
+
+    def ZC(w):
+        Cw = C(w)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            result = np.where(Cw != 0, 1 / (im_unit * w * Cw), 0)
+        return np.where(w == 0, 0, result)  # Avoid invalid values for w=0
+
+    def vel(w):
+        return 1 / beta(w)
+
+    def l(w):
+        return trim * vel(w_res) + delta_l
+
+    def ic(w):
+        return 0.11133
+
+    def chi(w):
+        return np.zeros_like(w)  # Placeholder for x1(w) and x2(w)
+
+    def pt(w):
+        return ic(w)
+
+    def L(w):
+        return L0 * (1 + sign * 4 * pi * eta * pt(w) * chi(w))
+
+    def ZLpure(w):
+        return im_unit * w * L(w) + Rcoil
+
+    def Zstray(w):
+        with np.errstate(divide='ignore', invalid='ignore'):
+            result = np.where(Cstray != 0, 1 / (im_unit * w * Cstray), 0)
+        return np.where(w == 0, 0, result)  # Avoid invalid values for w=0
+
+    def ZL(w):
+        return ZLpure(w) * Zstray(w) / (ZLpure(w) + Zstray(w))
+
+    def ZT(w):
+        epsilon = 1e-10  # Small constant to avoid division by zero
+        return Z0(w) * (ZL(w) + Z0(w) * np.tanh(gamma(w) * l(w))) / (Z0(w) + ZL(w) * np.tanh(gamma(w) * l(w)) + epsilon)
+
+    def Zleg1(w):
+        return r + ZC(w) + ZT(w)
+
+    def Ztotal(w):
+        return R1 / (1 + (R1 / Zleg1(w)))
+
+    def parfaze(w):
+        xp1 = w_low
+        xp2 = w_res
+        xp3 = w_high
+        yp1 = 0
+        yp2 = delta_phase
+        yp3 = 0
+
+        a = ((yp1 - yp2) * (w_low - w_high) - (yp1 - yp3) * (w_low - w_res)) / \
+            (((w_low ** 2) - (w_res ** 2)) * (w_low - w_high) - ((w_low ** 2) - (w_high ** 2)) * (w_low - w_res))
+        bb = (yp1 - yp3 - a * ((w_low ** 2) - (w_high ** 2))) / (w_low - w_high)
+        c = yp1 - a * (w_low ** 2) - bb * w_low
+        return a * w ** 2 + bb * w + c
+
+    def phi_trim(w):
+        return slope_phi() * (w - w_res) + parfaze(w)
+
+    def phi(w):
+        return phi_trim(w) + phi_const
+
+    def V_out(w):
+        return -1 * (I * Ztotal(w) * np.exp(im_unit * phi(w) * pi / 180))
+
+    out_y = V_out(w)
+    offset = np.array([x - min(out_y.real) for x in out_y.real])
+    return offset.real + DC_Offset + np.random.normal(alpha,beta) 
+
+# Define initial parameter guesses for curve_fit
+# U=0.37 Cknob=13.6 eta=0.707 trim=25.2 Cstray=2.272 phi_const=1.42
+# initial_params = [0.382652652, 13.6565062, 9.85632350e-02, 24.3720560, 400, 265.575865]
+initial_params = [0.382652652, .42, 9.85632350e-02, 20.3720560, 400, 265.575865, 0.018]
+#initial_params = [.5, 13.8, .1, 25, 20, 270]
 
 
-# plt.plot(x_full_bins, y)
-# plt.show()
+# Set bounds for the parameters
+#param_bounds = ([.1, 0.01, 0.001, 5, 1e-15, 0],  # Lower bounds
+#                [1.8, 30, 1, 15, 50, 3])  # Upper bounds
+param_bounds = ([.38, 0.001, 0.001, 19.37, 1e-15, 0, 0],  # Lower bounds
+                [0.5, 5, 1, 20.4, 400, 360, 1])  # Upper bounds
+# Perform the curve fitting with bounds
+popt, pcov = curve_fit(Baseline, x_freq, y, p0=initial_params, bounds=param_bounds)
 
+# Print the covariance matrix
+print("Covariance Matrix:")
+print(pcov)
 
-# initial_params = [0.00052]
+# Print the optimized parameters
+print("Optimized Parameters:")
+print(popt)
 
-
-# param_bounds = (0.0002, 0.0007) 
-
-# def Baseline(x, P):
-#     Sig, _, _ = GenerateLineshape(P, x)
-#     return Sig
-
-
-# popt, pcov = curve_fit(Baseline, x_full_bins, y, p0=initial_params, bounds=param_bounds)
-
-# print("Covariance Matrix:")
-# print(pcov)
-
-# print("Optimized Parameters:")
-# print(popt)
-
-# Fitted_Sig = Baseline(x_full_bins, *popt)
-
-# plt.errorbar(x_full_bins, y, yerr=yerr_full, fmt='o', markersize=1, label='Data', color='black')  # Plot full data range
-# plt.plot(x_full_bins, Fitted_Sig, label='Fit', color='red', linewidth=2)  # Fit for selected domain
-# plt.xlabel('Frequency (MHz)')
-# plt.ylabel('Dependent Variable')
-# plt.legend()
-# plt.title('Fit of Data between Frequencies')
-# plt.show()
+# Plot the original data and the resulting fit function
+plt.errorbar(x_full_freq, y_full, yerr=yerr_full, fmt='o', markersize=1, label='Data', color='black')  # Plot full data range
+plt.plot(x_freq, Baseline(x_freq, *popt), label='Fit', color='red', linewidth=2)  # Fit for selected domain
+plt.xlabel('Frequency (MHz)')
+plt.ylabel('Dependent Variable')
+plt.legend()
+plt.title('Fit of Data between Frequencies')
+plt.show()

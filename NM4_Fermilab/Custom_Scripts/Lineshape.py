@@ -9,13 +9,13 @@ from Custom_Scripts.Variables import *
 
 def FrequencyBound(f):
     # Define the domain to fit (bins 100 to 400)
-    fit_start_bin, fit_end_bin = 0, 1000
+    fit_start_bin, fit_end_bin = 0, 500
 
     # Frequency conversion factors
     bin_to_freq = 0.0015287  # MHz per bin
     start_freq = f  # Starting frequency in MHz
 
-    x_full_bins = np.arange(1000)  # Full range of bins
+    x_full_bins = np.arange(500)  # Full range of bins
     x_full_freq = start_freq + x_full_bins * bin_to_freq  # Convert bins to frequency
 
     x_bins = x_full_bins[fit_start_bin:fit_end_bin+1]
@@ -541,11 +541,9 @@ def BaselineTensor(f, U, Cknob, eta, trim, Cstray, phi_const, DC_offset):
 
 
 def GenerateLineshape(P,x):
-    omega_d = 2*np.pi * 16.0 * 1e6 # MHz
-    omega_q = 0.159
-    ### Go from R to frequency R = (omega - omega_d)/(3*omega_q)
-    x = (3*omega_q*x + omega_d)
-        
+    
+    x = (x - 32.68) / 0.6
+    
     def cosal(x,eps):
         return (1 -eps*x-s)/bigxsquare(x,eps)
 

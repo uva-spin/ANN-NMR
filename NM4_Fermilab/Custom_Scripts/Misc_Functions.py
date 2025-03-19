@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from scipy.stats import norm
 import tensorflow as tf
 from tensorflow.keras.layers import Layer
-from Custom_Scripts.Lineshape import *
+from Lineshape import *
 import sys
 from io import StringIO
 
