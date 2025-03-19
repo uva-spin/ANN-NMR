@@ -31,7 +31,9 @@ class SignalGenerator:
                  lower_bound=0.1,
                  p_max=0.6,
                  alpha=2.0,
-                 baseline=True):
+                 baseline=True,
+                 shifting=False,
+                 bound=0.08):
         """
         Initialize the SignalGenerator with configuration parameters.
         
@@ -87,6 +89,8 @@ class SignalGenerator:
         self.phi = 6.1319
         self.Cstray = 10**(-20)
         self.shift = 0
+        self.shifting = shifting
+        self.bound = bound
         
         # Mode-specific default parameters
         if self.mode == "deuteron":
@@ -120,12 +124,19 @@ class SignalGenerator:
         return Voigt(x, amp, sig, gam, center), None  # Return signal and None for P
     
     def _generate_deuteron_signal(self, P):
-        """Generate a deuteron signal using the GenerateLineshape function."""
-        X = np.linspace(-3, 3, 500)
-        
-        signal, _, _ = GenerateLineshape(P, X)      
-        signal /= 1500.0 ## Scaling it down here
-        return signal
+        if not self.shifting:
+            """Generate a deuteron signal using the GenerateLineshape function."""
+            X = np.linspace(30.88,34.48,500)
+            
+            signal, _, _ = GenerateLineshape(P, X)      
+            signal /= 1500.0 ## Scaling it down here
+            return signal
+        else:
+            """Generate a deuteron signal using the Sampling_Lineshape function. Here, we are shifting the signal by a random amount within the bound to 
+            capture more information about the lineshape"""
+            X = np.linspace(30.88,34.48,500)
+            signal = Sampling_Lineshape(P, X, self.bound)
+            return signal
     
     def _add_baseline_and_noise(self, signal, x):
         """Add baseline and optional noise to the signal."""
@@ -160,7 +171,7 @@ class SignalGenerator:
         snr_arr = []
         
         # Get frequency range based on center frequency
-        x, freq_lower_bound, freq_upper_bound = FrequencyBound(self.center_freq)
+        x, _, _ = FrequencyBound(self.center_freq)
         
         self.logger.info(f"Generating {self.num_samples} samples in {self.mode} mode...")
         

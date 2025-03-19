@@ -9,13 +9,15 @@ from Custom_Scripts.Variables import *
 
 def FrequencyBound(f):
     # Define the domain to fit (bins 100 to 400)
-    fit_start_bin, fit_end_bin = 0, 1000
+    fit_start_bin, fit_end_bin = 0, 500
+    fit_start_bin, fit_end_bin = 0, 500
 
     # Frequency conversion factors
     bin_to_freq = 0.0015287  # MHz per bin
     start_freq = f  # Starting frequency in MHz
 
-    x_full_bins = np.arange(1000)  # Full range of bins
+    x_full_bins = np.arange(500)  # Full range of bins
+    x_full_bins = np.arange(500)  # Full range of bins
     x_full_freq = start_freq + x_full_bins * bin_to_freq  # Convert bins to frequency
 
     x_bins = x_full_bins[fit_start_bin:fit_end_bin+1]
@@ -541,45 +543,40 @@ def BaselineTensor(f, U, Cknob, eta, trim, Cstray, phi_const, DC_offset):
 
 
 def GenerateLineshape(P,x):
-    omega_d = 2*np.pi * 16.0 * 1e6 # MHz
-    omega_q = 0.159
-    ### Go from R to frequency R = (omega - omega_d)/(3*omega_q)
-    x = (3*omega_q*x + omega_d)
-        
-    def cosal(x,eps):
-        return (1 -eps*x-s)/bigxsquare(x,eps)
-
-
-    def c(x):
-        return ((g**2+(1-x-s)**2)**0.5)**0.5
-
-
-    def bigxsquare(x,eps):
-        return (g**2+(1-eps*x-s)**2)**0.5
-
-
-    def mult_term(x,eps):
-        return float(1)/(2*np.pi*np.sqrt(bigxsquare(x,eps)))
-
-
-    def cosaltwo(x,eps):
-        return ((1+cosal(x,eps))/2)**0.5
-
-
-    def sinaltwo(x,eps):
-        return ((1-cosal(x,eps))/2)**0.5
-
-
-    def termone(x,eps):
-        return (np.pi/2)+np.arctan((bigy**2-bigxsquare(x,eps))/((2*bigy*(bigxsquare(x,eps))**0.5)*sinaltwo(x,eps)))
-
-
-    def termtwo(x,eps):
-        return np.log((bigy**2+bigxsquare(x,eps)+2*bigy*(bigxsquare(x,eps)**0.5)*cosaltwo(x,eps))/(bigy**2+bigxsquare(x,eps)-2*bigy*(bigxsquare(x,eps)**0.5)*cosaltwo(x,eps)))
-
-    def icurve(x,eps):
-        return mult_term(x,eps)*(2*cosaltwo(x,eps)*termone(x,eps)+sinaltwo(x,eps)*termtwo(x,eps))
     
+    g = 0.05
+    s = 0.04
+    bigy = (3 - s)**0.5
+    
+    
+    ### Go from frequency to R here
+    x = (x - 32.68)/0.6
+
+    def cosal(x, eps):
+        return (1 - eps * x - s) / bigxsquare(x, eps)
+
+    def bigxsquare(x, eps):
+        return (g**2 + (1 - eps * x - s)**2)**0.5
+
+    def mult_term(x, eps):
+        return 1 / (2 * np.pi * np.sqrt(bigxsquare(x, eps)))
+
+    def cosaltwo(x, eps):
+        return ((1 + cosal(x, eps)) / 2)**0.5
+
+    def sinaltwo(x, eps):
+        return ((1 - cosal(x, eps)) / 2)**0.5
+
+    def termone(x, eps):
+        return np.pi / 2 + np.arctan((bigy**2 - bigxsquare(x, eps)) / ((2 * bigy * (bigxsquare(x, eps))**0.5) * sinaltwo(x, eps)))
+
+    def termtwo(x, eps):
+        return np.log((bigy**2 + bigxsquare(x, eps) + 2 * bigy * (bigxsquare(x, eps)**0.5) * cosaltwo(x, eps)) / 
+                    (bigy**2 + bigxsquare(x, eps) - 2 * bigy * (bigxsquare(x, eps)**0.5) * cosaltwo(x, eps)))
+
+    def icurve(x, eps):
+        return mult_term(x, eps) * (2 * cosaltwo(x, eps) * termone(x, eps) + sinaltwo(x, eps) * termtwo(x, eps))
+
     r = (np.sqrt(4-3*P**(2))+P)/(2-2*P)
     Iplus = r*icurve(x,1)/10
     Iminus = icurve(x,-1)/10
