@@ -27,6 +27,8 @@ P_MAX=0.6                             # Maximum polarization value
 ALPHA=2.0                             # Decay rate for power law distribution
 BASELINE=1                            # 0=no baseline, 1=add baseline
 NOISE_LEVEL=0.000002                  # Standard deviation of Gaussian noise
+SHIFTLING=True                         # False=no shifting, True=enable shifting
+BOUND=0.08                            # Bound for shifting
 
 # Create job_logs directory if it doesn't exist
 mkdir -p job_logs
@@ -50,6 +52,8 @@ echo "  - P_max: ${P_MAX}"
 echo "  - Alpha: ${ALPHA}"
 echo "  - Baseline: ${BASELINE}"
 echo "  - Noise level: ${NOISE_LEVEL}"
+echo "  - Shifting: ${SHIFTLING}"
+echo "  - Bound: ${BOUND}"
 
 module purge
 module load miniforge/24.3.0-py3.11
@@ -81,6 +85,8 @@ p_max = sys.argv[11]
 alpha = sys.argv[12]
 baseline = sys.argv[13]
 noise_level = sys.argv[14]
+shifting = sys.argv[15]
+bound = sys.argv[16]
 
 # Construct the command to run the signal generator
 cmd = [
@@ -95,7 +101,9 @@ cmd = [
     "--p_max", p_max,
     "--alpha", alpha,
     "--baseline", baseline,
-    "--noise_level", noise_level
+    "--noise_level", noise_level,
+    "--shifting", shifting,
+    "--bound", bound
 ]
 
 # Run the command
@@ -118,7 +126,9 @@ python run_signal_generator.py \
     ${P_MAX} \
     ${ALPHA} \
     ${BASELINE} \
-    ${NOISE_LEVEL}
+    ${NOISE_LEVEL} \
+    ${SHIFTLING} \
+    ${BOUND}
 
 # Check if generation was successful
 if [ $? -ne 0 ]; then
