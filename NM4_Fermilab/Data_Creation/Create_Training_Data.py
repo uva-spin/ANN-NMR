@@ -171,7 +171,8 @@ class SignalGenerator:
         snr_arr = []
         
         # Get frequency range based on center frequency
-        x, _, _ = FrequencyBound(self.center_freq)
+        # x, _, _ = 
+        x = np.linspace(30.88,34.48,500)
         
         self.logger.info(f"Generating {self.num_samples} samples in {self.mode} mode...")
         
