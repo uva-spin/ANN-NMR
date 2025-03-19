@@ -272,7 +272,10 @@ def parse_args():
                         help='Standard deviation of Gaussian noise')
     parser.add_argument('--output_dir', default='Training_Data', 
                         help='Directory to save output CSV files')
-    
+    parser.add_argument('--shifting', type=int, choices=[False, True], default=False, 
+                        help='Whether to shift the signal (False=False, True=True)')
+    parser.add_argument('--bound', type=float, default=0.08, 
+                        help='Bound of the shift')
     return parser.parse_args()
 
 if __name__ == "__main__":
@@ -294,7 +297,9 @@ if __name__ == "__main__":
         lower_bound=args.lower_bound,
         p_max=args.p_max,
         alpha=args.alpha,
-        baseline=bool(args.baseline)
+        baseline=bool(args.baseline),
+        shifting=bool(args.shifting),
+        bound=args.bound
     )
     
     # Generate samples
