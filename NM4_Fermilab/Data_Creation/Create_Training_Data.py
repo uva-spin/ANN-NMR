@@ -67,6 +67,10 @@ class SignalGenerator:
             Decay rate for power law distribution that samples P's outside oversampling range
         baseline : bool
             Whether or not to add a baseline to the signal
+        shifting : bool
+            Whether or not to shift the signal
+        bound : float
+            Bound of the shift
         """
         self.mode = mode.lower()
         self.output_dir = output_dir
@@ -124,18 +128,17 @@ class SignalGenerator:
         return Voigt(x, amp, sig, gam, center), None  # Return signal and None for P
     
     def _generate_deuteron_signal(self, P):
-        if not self.shifting:
-            """Generate a deuteron signal using the GenerateLineshape function."""
-            X = np.linspace(30.88,34.48,500)
-            
-            signal, _, _ = GenerateLineshape(P, X)      
-            signal /= 1500.0 ## Scaling it down here
-            return signal
-        else:
+        if self.shifting:
             """Generate a deuteron signal using the Sampling_Lineshape function. Here, we are shifting the signal by a random amount within the bound to 
             capture more information about the lineshape"""
             X = np.linspace(30.88,34.48,500)
-            signal = Sampling_Lineshape(P, X, self.bound)
+            signal = Sampling_Lineshape(P, X, self.bound) / 1500.0
+            return signal
+        else:
+            """Generate a deuteron signal using the GenerateLineshape function."""
+            X = np.linspace(30.88,34.48,500)
+            signal, _, _ = GenerateLineshape(P, X)      
+            signal /= 1500.0 ## Scaling it down here
             return signal
     
     def _add_baseline_and_noise(self, signal, x):
@@ -273,36 +276,42 @@ def parse_args():
                         help='Standard deviation of Gaussian noise')
     parser.add_argument('--output_dir', default='Training_Data', 
                         help='Directory to save output CSV files')
-    parser.add_argument('--shifting', type=int, choices=[False, True], default=False, 
-                        help='Whether to shift the signal (False=False, True=True)')
+    parser.add_argument('--shifting', type=int, choices=[0, 1], default=0, 
+                        help='Whether to shift the signal (0=False, 1=True)')
     parser.add_argument('--bound', type=float, default=0.08, 
                         help='Bound of the shift')
     return parser.parse_args()
 
 if __name__ == "__main__":
-    # Parse command line arguments
-    args = parse_args()
+    args = parse_args()    
     
-    # Create SignalGenerator with parsed arguments
     generator = SignalGenerator(
-        mode=args.mode,
-        output_dir=args.output_dir,
-        num_samples=args.num_samples,
-        add_noise=bool(args.add_noise),
-        noise_level=args.noise_level,
-        oversampling=bool(args.oversampling),
-        oversampled_value=args.oversampled_value,
-        oversampling_upper_bound=args.oversampling_upper_bound,
-        oversampling_lower_bound=args.oversampling_lower_bound,
-        upper_bound=args.upper_bound,
-        lower_bound=args.lower_bound,
-        p_max=args.p_max,
-        alpha=args.alpha,
-        baseline=bool(args.baseline),
-        shifting=bool(args.shifting),
-        bound=args.bound
+    mode=args.mode,
+    output_dir=args.output_dir,
+    num_samples=args.num_samples,
+    add_noise=bool(args.add_noise),
+    noise_level=args.noise_level,
+    oversampling=bool(args.oversampling),
+    oversampled_value=args.oversampled_value,
+    oversampling_upper_bound=args.oversampling_upper_bound,
+    oversampling_lower_bound=args.oversampling_lower_bound,
+    upper_bound=args.upper_bound,
+    lower_bound=args.lower_bound,
+    p_max=args.p_max,
+    alpha=args.alpha,
+    baseline=bool(args.baseline),
+    shifting=bool(args.shifting),
+    bound=args.bound
     )
     
     # Generate samples
-    generator.generate_samples(args.job_id)
+    
+    try:
+        print("Generating signal...")
+        generator.generate_samples(args.job_id)
+        print("Signal generation complete")
+    except Exception as e:
+        print("Error generating signal\n")
+        print(f"Error: {e}")
+        sys.exit(1)
     

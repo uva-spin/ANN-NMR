@@ -27,7 +27,7 @@ P_MAX=0.6                             # Maximum polarization value
 ALPHA=2.0                             # Decay rate for power law distribution
 BASELINE=1                            # 0=no baseline, 1=add baseline
 NOISE_LEVEL=0.000002                  # Standard deviation of Gaussian noise
-SHIFTLING=True                         # False=no shifting, True=enable shifting
+SHIFTING=1                            # 0=no shifting, 1=enable shifting
 BOUND=0.08                            # Bound for shifting
 
 # Create job_logs directory if it doesn't exist
@@ -52,7 +52,7 @@ echo "  - P_max: ${P_MAX}"
 echo "  - Alpha: ${ALPHA}"
 echo "  - Baseline: ${BASELINE}"
 echo "  - Noise level: ${NOISE_LEVEL}"
-echo "  - Shifting: ${SHIFTLING}"
+echo "  - Shifting: ${SHIFTING}"
 echo "  - Bound: ${BOUND}"
 
 module purge
@@ -88,6 +88,11 @@ noise_level = sys.argv[14]
 shifting = sys.argv[15]
 bound = sys.argv[16]
 
+# Print output directory to help with debugging
+output_dir = "${OUTPUT_DIR}"
+print(f"Output directory: {output_dir}")
+print(f"Current working directory: {os.getcwd()}")
+
 # Construct the command to run the signal generator
 cmd = [
     "python", "Create_Training_Data.py",
@@ -103,8 +108,12 @@ cmd = [
     "--baseline", baseline,
     "--noise_level", noise_level,
     "--shifting", shifting,
-    "--bound", bound
+    "--bound", bound,
+    "--output_dir", output_dir
 ]
+
+# Print the command for debugging
+print(f"Running command: {' '.join(cmd)}")
 
 # Run the command
 result = subprocess.run(cmd)
@@ -127,7 +136,7 @@ python run_signal_generator.py \
     ${ALPHA} \
     ${BASELINE} \
     ${NOISE_LEVEL} \
-    ${SHIFTLING} \
+    ${SHIFTING} \
     ${BOUND}
 
 # Check if generation was successful
@@ -150,11 +159,23 @@ import sys
 output_dir = sys.argv[1]
 output_filename = sys.argv[2]
 
+print(f"Merging files in {output_dir} to {output_filename}")
+
 os.chdir(output_dir)
+print(f"Changed working directory to {os.getcwd()}")
+
+# Print directory contents for debugging
+print(f"Contents of {output_dir}:")
+for f in glob.glob('*'):
+    print(f"  {f}")
+
 extension = 'csv'
 all_filenames = [i for i in glob.glob('*.{}'.format(extension))]
-
 print(f"Found {len(all_filenames)} CSV files to combine")
+
+if not all_filenames:
+    print("ERROR: No CSV files found. Exiting.")
+    sys.exit(1)
 
 # Load and combine all CSV files
 print("Loading and combining files...")

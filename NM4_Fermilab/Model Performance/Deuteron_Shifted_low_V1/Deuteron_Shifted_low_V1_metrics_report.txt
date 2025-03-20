@@ -1,0 +1,25 @@
+Model Evaluation Metrics - Deuteron_Shifted_low_V1
+==================================================
+
+Basic Error Metrics:
+MAE: 1.34639701
+RMSE: 2.42292892
+Max Absolute Error: 11.84544953
+R²: 0.98833753
+
+Relative Error Metrics:
+Median RPE: 0.07509%
+Mean RPE: 0.09100%
+90th Percentile RPE: 0.17953%
+95th Percentile RPE: 0.22155%
+99th Percentile RPE: 0.34305%
+
+Threshold Metrics:
+% within 0.0001 abs error: 0.3421%
+% within 0.001 abs error: 4.9474%
+% within 0.01 abs error: 51.0526%
+% within 0.1 abs error: 52.1579%
+% within 0.01% rel error: 6.3947%
+% within 0.1% rel error: 61.2368%
+% within 1% rel error: 100.0000%
+% within 5% rel error: 100.0000%

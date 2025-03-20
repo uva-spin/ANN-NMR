@@ -2,13 +2,14 @@ import numpy as np
 import random
 from scipy.stats import zscore
 import os
+import sys
 import glob as glob
 import scipy.integrate as spi
 import matplotlib.pyplot as plt
 from scipy.stats import norm
 import tensorflow as tf
 from tensorflow.keras.layers import Layer
-from Lineshape import *
+from Custom_Scripts.Lineshape import *
 import sys
 from io import StringIO
 
