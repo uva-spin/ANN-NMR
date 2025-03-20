@@ -71,15 +71,15 @@ print(f"Using device: {device}")
 
 # File paths and versioning
 # data_path = find_file("Test.csv") 
-version = f'Deuteron_TabNet_Oversampled_1M_No_Baseline'
-performance_dir = f"Model_Performance/{version}"
+version = f'Deuteron_TabNet_Shifted_low'
+performance_dir = f"Model Performance/{version}"
 model_dir = f"Models/{version}"
 os.makedirs(performance_dir, exist_ok=True)
 os.makedirs(model_dir, exist_ok=True)
 
 # Data loading and preprocessing
 print("Loading data...")
-data_path = find_file("Deuteron_Oversampled_1M.csv")
+data_path = find_file("Shifted_low.csv")
 data = pd.read_csv(data_path)
 
 # Data splitting

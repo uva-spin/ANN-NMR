@@ -39,8 +39,8 @@ if physical_devices:
 tf.keras.backend.set_floatx('float64')
 
 # File paths and versioning
-data_path = find_file("Deuteron_Oversampled_1M.csv")  
-version = 'Deuteron_Low_ResNet_Optuna_V7'  
+data_path = find_file("Shifted_low.csv")  
+version = 'Deuteron_Shifted_low_ResNet_Optuna_V1'  
 performance_dir = f"Model Performance/{version}"  
 model_dir = f"Models/{version}"  
 os.makedirs(performance_dir, exist_ok=True)
@@ -272,41 +272,24 @@ y_train = y_train.reshape(-1, 1)
 y_val = y_val.reshape(-1, 1)
 y_test = y_test.reshape(-1, 1)
 
-epsilon = 1e-10  
-y_train_log = np.log(y_train + epsilon)
-y_val_log = np.log(y_val + epsilon)
-y_test_log = np.log(y_test + epsilon)
-
-y_train_original = y_train.copy()
-y_val_original = y_val.copy()
-y_test_original = y_test.copy()
-
-sample_weights_log = 1.0 / (y_train_log + epsilon)
-sample_weights_log = sample_weights_log / np.mean(sample_weights_log) 
-
-sample_weights_val_log = 1.0 / (y_val_log + epsilon)
-sample_weights_val_log = sample_weights_val_log / np.mean(sample_weights_val_log)
-
-sample_weights_test_log = 1.0 / (y_test_log + epsilon)
-sample_weights_test_log = sample_weights_test_log / np.mean(sample_weights_test_log)
 
 print("Data normalized successfully")
 
 
 batch_size = 256  
 
-train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train_log))
+train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train))
 train_dataset = train_dataset.shuffle(buffer_size=len(X_train))  
 train_dataset = train_dataset.batch(batch_size)  
 train_dataset = train_dataset.cache()
 train_dataset = train_dataset.prefetch(tf.data.experimental.AUTOTUNE)  
 
-val_dataset = tf.data.Dataset.from_tensor_slices((X_val, y_val_log))
+val_dataset = tf.data.Dataset.from_tensor_slices((X_val, y_val))
 val_dataset = val_dataset.batch(batch_size) 
 val_dataset = val_dataset.cache()
 val_dataset = val_dataset.prefetch(tf.data.experimental.AUTOTUNE)  
 
-test_dataset = tf.data.Dataset.from_tensor_slices((X_test, y_test_log))
+test_dataset = tf.data.Dataset.from_tensor_slices((X_test, y_test))
 test_dataset = test_dataset.batch(batch_size)  
 test_dataset = test_dataset.cache()
 test_dataset = test_dataset.prefetch(tf.data.experimental.AUTOTUNE)  
@@ -404,8 +387,7 @@ if __name__ == "__main__":
         )
         
         y_test_pred = final_model.predict(test_dataset) 
-        y_test_pred = np.exp(y_test_pred - epsilon).flatten()
-        y_test = y_test_original.flatten()
+        y_test = y_test.flatten()
         residuals = y_test - y_test_pred
         
         rpe = np.abs((y_test - y_test_pred) / np.abs(y_test)) * 100
