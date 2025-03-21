@@ -178,7 +178,6 @@ def plot_rpe_and_residuals(y_true, y_pred, performance_dir, version, figsize=(18
     # Ensure directory exists
     os.makedirs(performance_dir, exist_ok=True)
     
-    # Convert inputs to numpy arrays
     y_true = np.array(y_true).flatten()*100
     y_pred = np.array(y_pred).flatten()*100
     
@@ -204,8 +203,11 @@ def plot_rpe_and_residuals(y_true, y_pred, performance_dir, version, figsize=(18
         'RPE': rpe
     })
     
+    
     # Remove any potential infinity or NaN values
     results_df = results_df.replace([np.inf, -np.inf], np.nan).dropna()
+    
+    results_df.to_csv(os.path.join(performance_dir, f'{version}_results.csv'), index=False)
     
     # Style settings
     plt.style.use('seaborn-v0_8-whitegrid')
@@ -893,7 +895,7 @@ def plot_training_history(history, output_dir, version_name):
     metrics_palette = sns.color_palette("viridis", n_colors=6)
     
     # Get number of epochs
-    epochs = range(1, len(history['train_loss']) + 1)
+    epochs = range(1, len(history['loss']) + 1)
     
     # 1. Create Loss Plot (as a separate figure)
     plt.figure(figsize=(12, 8))
@@ -950,7 +952,7 @@ def plot_training_history(history, output_dir, version_name):
     plt.figure(figsize=(12, 8))
     
     # Plot metrics with improved styling
-    plt.plot(epochs, history['train_mae'], color=metrics_palette[0], marker='o', markersize=4, 
+    plt.plot(epochs, history['mae'], color=metrics_palette[0], marker='o', markersize=4, 
              label='Training MAE', alpha=0.9, markevery=max(1, len(epochs)//20))
     plt.plot(epochs, history['val_mae'], color=metrics_palette[1], marker='s', markersize=4, 
              label='Validation MAE', alpha=0.9, markevery=max(1, len(epochs)//20))
@@ -962,8 +964,8 @@ def plot_training_history(history, output_dir, version_name):
                 marker='*', label=f'Best Val MAE: {min_val_mae:.6f}', zorder=5)
     
     # Add RMSE if available
-    if 'train_rmse' in history:
-        plt.plot(epochs, history['train_rmse'], color=metrics_palette[3], marker='o', linestyle='--',
+    if 'rmse' in history:
+        plt.plot(epochs, history['rmse'], color=metrics_palette[3], marker='o', linestyle='--',
                 markersize=4, label='Training RMSE', alpha=0.9, markevery=max(1, len(epochs)//20))
         plt.plot(epochs, history['val_rmse'], color=metrics_palette[4], marker='s', linestyle='--',
                 markersize=4, label='Validation RMSE', alpha=0.9, markevery=max(1, len(epochs)//20))
@@ -987,7 +989,7 @@ def plot_training_history(history, output_dir, version_name):
                 arrowprops=dict(facecolor='black', shrink=0.05, width=1.5, headwidth=8, alpha=0.7),
                 fontsize=10, fontweight='bold')
     
-    if 'train_rmse' in history:
+    if 'rmse' in history:
         plt.annotate(f'Best RMSE: {min_val_rmse:.6f} (Epoch {min_val_rmse_epoch})',
                     xy=(min_val_rmse_epoch, min_val_rmse), xytext=(min_val_rmse_epoch + len(epochs)*0.05, min_val_rmse*1.1),
                     arrowprops=dict(facecolor='black', shrink=0.05, width=1.5, headwidth=8, alpha=0.7),

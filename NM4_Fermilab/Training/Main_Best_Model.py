@@ -50,6 +50,10 @@ os.makedirs(model_dir, exist_ok=True)
 print("Loading data...")
 data = pd.read_csv(data_path)
 
+data = data.iloc[:1000000]
+
+print(f"Number of rows in {data_path}: {len(data)}")
+
 train_data, temp_data = train_test_split(data, test_size=0.3, random_state=42)
 val_data, test_data = train_test_split(temp_data, test_size=1/3, random_state=42)
 
@@ -93,7 +97,7 @@ def residual_block(x, units, dropout_rate=0.2):
     residual = x
     
     # Pre-activation: BN -> ReLU -> Dense (first layer)
-    y = tf.keras.layers.BatchNormalization(epsilon=0.001, momentum=0.99)(x)
+    y = tf.keras.layers.LayerNormalization(epsilon=0.001, momentum=0.99)(x)
     y = tf.keras.layers.Activation('swish')(y)
     y = tf.keras.layers.Dropout(dropout_rate)(y)
     y = tf.keras.layers.Dense(units=units, activation=None, use_bias=True,
@@ -102,7 +106,7 @@ def residual_block(x, units, dropout_rate=0.2):
                               kernel_regularizer=tf.keras.regularizers.L1L2(l1=1e-05, l2=0.1))(y)
     
     # Pre-activation: BN -> ReLU -> Dense (second layer)
-    y = tf.keras.layers.BatchNormalization(epsilon=0.001, momentum=0.99)(y)
+    y = tf.keras.layers.LayerNormalization(epsilon=0.001, momentum=0.99)(y)
     y = tf.keras.layers.Activation('swish')(y)
     y = tf.keras.layers.Dropout(dropout_rate)(y)
     y = tf.keras.layers.Dense(units=units, activation=None, use_bias=True,
@@ -114,9 +118,9 @@ def residual_block(x, units, dropout_rate=0.2):
     if x.shape[-1] != units:
         residual = tf.keras.layers.Dense(units)(x)
     
-    
     ### Here we add the residual connections
     output = tf.keras.layers.Add()([residual, y])
+    output = tf.keras.layers.Dropout(dropout_rate)(output)
     
     return output
 
@@ -191,7 +195,7 @@ history = model.fit(
 
 y_test_pred = model.predict(X_test).flatten()
 y_test_pred = scaler_y.inverse_transform(y_test_pred.reshape(-1, 1)).flatten()
-y_test = y_test.flatten()
+y_test = scaler_y.inverse_transform(y_test.reshape(-1, 1)).flatten()
 residuals = y_test - y_test_pred
 rpe = np.abs((y_test - y_test_pred) / np.abs(y_test)) * 100  
 

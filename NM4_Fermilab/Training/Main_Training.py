@@ -45,6 +45,8 @@ os.makedirs(model_dir, exist_ok=True)
 
 
 def residual_block(x, units):
+    
+    
     y = layers.Dense(units, activation=None, kernel_initializer=initializers.GlorotNormal(),kernel_regularizer=regularizers.l2(0.01))(x)
     y = layers.BatchNormalization()(y)
     y = layers.Activation('swish')(y)

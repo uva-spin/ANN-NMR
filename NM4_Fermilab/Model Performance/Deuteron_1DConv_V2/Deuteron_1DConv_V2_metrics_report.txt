@@ -1,0 +1,25 @@
+Model Evaluation Metrics - Deuteron_1DConv_V2
+==================================================
+
+Basic Error Metrics:
+MAE: 0.33682452
+RMSE: 0.38359482
+Max Absolute Error: 1.43552203
+R²: 0.00000084
+
+Relative Error Metrics:
+Median RPE: 0.95337%
+Mean RPE: 3.29751%
+90th Percentile RPE: 7.20232%
+95th Percentile RPE: 7.64783%
+99th Percentile RPE: 8.04326%
+
+Threshold Metrics:
+% within 0.0001 abs error: 0.0000%
+% within 0.001 abs error: 0.0000%
+% within 0.01 abs error: 0.5000%
+% within 0.1 abs error: 9.0000%
+% within 0.01% rel error: 0.0000%
+% within 0.1% rel error: 3.0000%
+% within 1% rel error: 50.0000%
+% within 5% rel error: 54.0000%
