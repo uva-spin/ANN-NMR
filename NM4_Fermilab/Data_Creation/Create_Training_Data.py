@@ -4,7 +4,6 @@ import sys
 import argparse
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
 import logging
 from Custom_Scripts.Lineshape import *
 
@@ -35,7 +34,7 @@ class SignalGenerator:
                  shifting=False,
                  bound=0.08):
         """
-        Initialize the SignalGenerator with configuration parameters.
+        Generate a lineshape (ND3 or NH3) with configuration parameters.
         
         Parameters:
         -----------
@@ -108,10 +107,8 @@ class SignalGenerator:
         else:
             raise ValueError(f"Invalid mode: {mode}. Choose 'deuteron' or 'proton'.")
         
-        # Create output directory
         os.makedirs(self.output_dir, exist_ok=True)
         
-        # Setup logging
         logging.basicConfig(
             level=logging.INFO,
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -119,25 +116,26 @@ class SignalGenerator:
         self.logger = logging.getLogger("SignalGenerator")
     
     def _generate_proton_signal(self, x):
-        """Generate a proton signal using Voigt profile."""
+        """Generate a proton signal using Voigt profile.
+        This is still being worked on..."""
         sig = 0.1 + np.random.uniform(-0.009, 0.001)       
         gam = 0.1 + np.random.uniform(-0.009, 0.001)         
         amp = 0.005 + np.random.uniform(-0.005, 0.01)
         center = 213 + np.random.uniform(-0.1, 0.1)
         
-        return Voigt(x, amp, sig, gam, center), None  # Return signal and None for P
+        return Voigt(x, amp, sig, gam, center), None
     
     def _generate_deuteron_signal(self, P):
         if self.shifting:
             """Generate a deuteron signal using the Sampling_Lineshape function. Here, we are shifting the signal by a random amount within the bound to 
             capture more information about the lineshape"""
-            X = np.linspace(30.88,34.48,500)
-            signal = Sampling_Lineshape(P, X, self.bound) / 1500.0
+            X = np.linspace(30.88,34.48,500) ### Center point here is ~32.6MHz 
+            signal = Sampling_Lineshape(P, X, self.bound) / 1500.0 ### Scale here needs to be worked on
             return signal
         else:
             """Generate a deuteron signal using the GenerateLineshape function."""
             X = np.linspace(30.88,34.48,500)
-            signal, _, _ = GenerateLineshape(P, X)      
+            signal, _, _ = GenerateLineshape(P, X)   
             signal /= 1500.0 ## Scaling it down here
             return signal
     
@@ -198,8 +196,7 @@ class SignalGenerator:
             # Generate P's uniformly between [lower_bound, upper_bound]
             P_values = np.random.uniform(self.lower_bound, self.upper_bound, self.num_samples)
         
-        for Ps in tqdm(P_values, desc="Generating sample data"):
-            # Generate signal based on mode
+        for Ps in P_values:
             if self.mode == "deuteron":
                 signal = self._generate_deuteron_signal(Ps)
             else:  # proton mode
@@ -220,10 +217,9 @@ class SignalGenerator:
         # Create dataframe
         df = pd.DataFrame(signal_arr)
         
-        # Add metadata columns if available
-        if len(P_values) > 0:  # Check if P_values is not empty
+        if len(P_values) > 0:  
             df['P'] = P_values
-        if len(snr_arr) > 0:  # Check if snr_arr is not empty
+        if len(snr_arr) > 0:  
             df['SNR'] = snr_arr
             
         # Determine filename
@@ -234,7 +230,7 @@ class SignalGenerator:
         
         file_path = os.path.join(self.output_dir, filename)
         
-        # Save dataframe
+        # Saving Dataframe
         try:
             df.to_csv(file_path, index=False)
             self.logger.info(f"CSV file saved successfully to {file_path}")
@@ -251,11 +247,11 @@ def parse_args():
     parser.add_argument('job_id', help='Job identifier for the output filename')
     parser.add_argument('mode', choices=['deuteron', 'proton'], help='Experiment type')
     parser.add_argument('num_samples', type=int, help='Number of samples to generate')
-    parser.add_argument('add_noise', type=int, choices=[0, 1], help='Whether to add noise (0=False, 1=True)')
+    parser.add_argument('add_noise', type=bool, default=False, help='Whether to add noise')
     
     # Optional arguments with defaults
-    parser.add_argument('--oversampling', type=int, choices=[0, 1], default=0, 
-                        help='Whether to oversample around a value (0=False, 1=True)')
+    parser.add_argument('--oversampling', type=bool, default=False, 
+                        help='Whether to oversample around a value')
     parser.add_argument('--oversampled_value', type=float, default=0.0005, 
                         help='Value to oversample around')
     parser.add_argument('--oversampling_upper_bound', type=float, default=0.0006, 
@@ -270,14 +266,14 @@ def parse_args():
                         help='Maximum polarization value')
     parser.add_argument('--alpha', type=float, default=2.0, 
                         help='Decay rate for power law distribution')
-    parser.add_argument('--baseline', type=int, choices=[0, 1], default=1, 
-                        help='Whether to add a baseline (0=False, 1=True)')
+    parser.add_argument('--baseline', type=bool, default=True, 
+                        help='Whether to add a baseline')
     parser.add_argument('--noise_level', type=float, default=0.000002, 
                         help='Standard deviation of Gaussian noise')
     parser.add_argument('--output_dir', default='Training_Data', 
                         help='Directory to save output CSV files')
-    parser.add_argument('--shifting', type=int, choices=[0, 1], default=0, 
-                        help='Whether to shift the signal (0=False, 1=True)')
+    parser.add_argument('--shifting', type=bool, default=False, 
+                        help='Whether to shift the signal')
     parser.add_argument('--bound', type=float, default=0.08, 
                         help='Bound of the shift')
     return parser.parse_args()
@@ -289,9 +285,9 @@ if __name__ == "__main__":
     mode=args.mode,
     output_dir=args.output_dir,
     num_samples=args.num_samples,
-    add_noise=bool(args.add_noise),
+    add_noise=args.add_noise,
     noise_level=args.noise_level,
-    oversampling=bool(args.oversampling),
+    oversampling=args.oversampling,
     oversampled_value=args.oversampled_value,
     oversampling_upper_bound=args.oversampling_upper_bound,
     oversampling_lower_bound=args.oversampling_lower_bound,
@@ -299,19 +295,62 @@ if __name__ == "__main__":
     lower_bound=args.lower_bound,
     p_max=args.p_max,
     alpha=args.alpha,
-    baseline=bool(args.baseline),
-    shifting=bool(args.shifting),
+    baseline=args.baseline,
+    shifting=args.shifting,
     bound=args.bound
     )
-    
-    # Generate samples
-    
+        
     try:
         print("Generating signal...")
+        
+        import time
+        start_time = time.time()
+        
         generator.generate_samples(args.job_id)
-        print("Signal generation complete")
+        
+        execution_time = time.time() - start_time
+        print(f"Signal generation complete in {execution_time:.2f} seconds")
     except Exception as e:
-        print("Error generating signal\n")
-        print(f"Error: {e}")
+        print("\nERROR DURING SIGNAL GENERATION:")
+        print("-" * 60)
+        
+        import traceback
+        print(f"Error type: {type(e).__name__}")
+        print(f"Error message: {str(e)}")
+        print("\nTraceback:")
+        traceback.print_exc()
+        
+        print("\nDIAGNOSTIC INFORMATION:")
+        try:
+            print(f"TensorFlow imported: {'tf' in globals()}")
+            if 'tf' in globals():
+                print(f"TensorFlow version: {tf.__version__}")
+            
+            # Check input parameters
+            print(f"\nInput parameters:")
+            print(f"  Mode: {args.mode}")
+            print(f"  Num samples: {args.num_samples}")
+            print(f"  Add noise: {args.add_noise}")
+            print(f"  Oversampling: {args.oversampling}")
+            
+            # Check if frequency range is properly defined
+            print(f"\nFrequency configuration:")
+            if hasattr(generator, 'center_freq'):
+                print(f"  Center frequency: {generator.center_freq} MHz")
+            
+            # Check for file system issues
+            print(f"\nOutput directory:")
+            print(f"  Path: {args.output_dir}")
+            print(f"  Exists: {os.path.exists(args.output_dir)}")
+            print(f"  Writable: {os.access(args.output_dir, os.W_OK) if os.path.exists(args.output_dir) else 'N/A'}")
+            
+            # import psutil   
+            # process = psutil.Process(os.getpid())
+            # print(f"\nMemory usage: {process.memory_info().rss / (1024 * 1024):.2f} MB")
+            
+        except Exception as diag_error:
+            print(f"Error during diagnostics: {diag_error}")
+        
+        print("-" * 60)
         sys.exit(1)
     

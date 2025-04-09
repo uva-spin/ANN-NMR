@@ -15,9 +15,9 @@ OUTPUT_DIR="${PROJECT_DIR}/Training_Data"
 OUTPUT_FILENAME="Test.csv"  # Global variable for output filename
 MODE="deuteron"                       # Options: deuteron, proton
 NUM_SAMPLES=1000                      # Number of samples per task ### TOTAL NUMBER OF SAMPLES = NUM_SAMPLES * SLURM_ARRAY_TASK_MAX
-ADD_NOISE=0                           # 0=no noise, 1=add noise
+ADD_NOISE=False                           # False=no noise, True=add noise
 
-OVERSAMPLING=1                        # 0=no oversampling, 1=enable oversampling
+OVERSAMPLING=True                        # False=no oversampling, True=enable oversampling
 OVERSAMPLED_VALUE=0.0005              # Value to oversample around
 OVERSAMPLING_UPPER_BOUND=0.0006       # Upper bound for oversampling range
 OVERSAMPLING_LOWER_BOUND=0.0004       # Lower bound for oversampling range
@@ -25,9 +25,9 @@ UPPER_BOUND=0.6                       # Upper bound for P value (not oversampled
 LOWER_BOUND=0.1                       # Lower bound for P value (not oversampled)
 P_MAX=0.6                             # Maximum polarization value
 ALPHA=2.0                             # Decay rate for power law distribution
-BASELINE=1                            # 0=no baseline, 1=add baseline
+BASELINE=True                         # False=no baseline, True=add baseline
 NOISE_LEVEL=0.000002                  # Standard deviation of Gaussian noise
-SHIFTING=1                            # 0=no shifting, 1=enable shifting
+SHIFTING=False                         # False=no shifting, True=enable shifting
 BOUND=0.08                            # Bound for shifting
 
 # Create job_logs directory if it doesn't exist
@@ -56,9 +56,9 @@ echo "  - Shifting: ${SHIFTING}"
 echo "  - Bound: ${BOUND}"
 
 module purge
-module load miniforge/24.3.0-py3.11
+module spider miniforge/24.3.0-py3.11
+module load apptainer tensorflow/2.17.0
 
-# Create output directories
 mkdir -p ${OUTPUT_DIR}
 
 # ===== Part 1: Generate Signal Data =====
@@ -121,7 +121,7 @@ sys.exit(result.returncode)
 EOF
 
 # Run the wrapper script with all parameters
-python run_signal_generator.py \
+apptainer run --nv $CONTAINERDIR/tensorflow-2.17.0.sif run_signal_generator.py \
     ${SLURM_ARRAY_TASK_ID} \
     ${MODE} \
     ${NUM_SAMPLES} \
@@ -211,7 +211,6 @@ if [ "${SLURM_ARRAY_TASK_ID}" -eq "${SLURM_ARRAY_TASK_MAX}" ]; then
 OUTPUT_DIR="${OUTPUT_DIR}"
 OUTPUT_FILENAME="${OUTPUT_FILENAME}"
 
-# Load required modules
 module purge
 module load miniforge/24.3.0-py3.11
 
