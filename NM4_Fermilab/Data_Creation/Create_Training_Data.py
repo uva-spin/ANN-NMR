@@ -5,7 +5,7 @@ import argparse
 import numpy as np
 import pandas as pd
 import logging
-from Custom_Scripts.Lineshape import *
+from Lineshape import *
 
 class SignalGenerator:
     """
