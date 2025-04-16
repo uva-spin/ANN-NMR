@@ -20,9 +20,9 @@ class SignalGenerator:
                  mode="deuteron",
                  output_dir="Training_Data", 
                  num_samples=1000,
-                 add_noise=False,
+                 add_noise=0,
                  noise_level=0.000002,
-                 oversampling=False,
+                 oversampling=1,
                  oversampled_value=0.0005,
                  oversampling_upper_bound=0.0006,
                  oversampling_lower_bound=0.0004,
@@ -30,8 +30,8 @@ class SignalGenerator:
                  lower_bound=0.1,
                  p_max=0.6,
                  alpha=2.0,
-                 baseline=True,
-                 shifting=False,
+                 baseline=1,
+                 shifting=0,
                  bound=0.08):
         """
         Generate a lineshape (ND3 or NH3) with configuration parameters.
@@ -177,20 +177,28 @@ class SignalGenerator:
         
         self.logger.info(f"Generating {self.num_samples} samples in {self.mode} mode...")
         
+        def sample_exponential_with_cutoff(scale, p_min, p_max, size):
+            samples = []
+            while len(samples) < size:
+                # Sample from exponential and shift by p_min
+                new_samples = p_min + np.random.exponential(scale=scale, size=size)
+                # Keep only values <= p_max
+                filtered = new_samples[new_samples <= p_max]
+                samples.extend(filtered.tolist())
+            return np.array(samples[:size])
+        
         if self.oversampling:
             self.logger.info(f"Oversampling around {self.oversampled_value} between bounds: "
-                            f"Lower bound: {self.oversampling_lower_bound}, Upper bound: {self.oversampling_upper_bound}")
+                             f"Lower bound: {self.oversampling_lower_bound}, Upper bound: {self.oversampling_upper_bound}")
             
-            # Generate oversampled values
             oversample_P = np.random.uniform(self.oversampling_lower_bound, self.oversampling_upper_bound, self.num_samples)
             
-            # Generate distribution of P's outside of oversampling range using power law
             P_min = self.oversampling_upper_bound
-            u = np.random.uniform(0, 1, self.num_samples)
-            P_power = P_min + (self.p_max - P_min) * (1 - u)**(1.0/self.alpha)
+
+            # Sample from exponential and truncate at p_max
+            P_exp = sample_exponential_with_cutoff(scale=self.alpha, p_min=P_min, p_max=self.p_max, size=self.num_samples)
             
-            # Combine both distributions
-            P_values = np.concatenate([oversample_P, P_power])
+            P_values = np.concatenate([oversample_P, P_exp])
         else:
             self.logger.info(f"Uniformly creating data between {self.lower_bound} and {self.upper_bound}")
             # Generate P's uniformly between [lower_bound, upper_bound]
@@ -244,14 +252,18 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Generate signal data for training.')
     
     # Required arguments
-    parser.add_argument('job_id', help='Job identifier for the output filename')
-    parser.add_argument('mode', choices=['deuteron', 'proton'], help='Experiment type')
-    parser.add_argument('num_samples', type=int, help='Number of samples to generate')
-    parser.add_argument('add_noise', type=bool, default=False, help='Whether to add noise')
+    parser.add_argument('--job_id', help='Job identifier for the output filename')
+    parser.add_argument('--mode', choices=['deuteron', 'proton'], help='Experiment type')
+    parser.add_argument('--num_samples', type=int, help='Number of samples to generate')
     
-    # Optional arguments with defaults
-    parser.add_argument('--oversampling', type=bool, default=False, 
-                        help='Whether to oversample around a value')
+    
+    parser.add_argument('--add_noise', type=int, choices=[0, 1], default=0,
+                        help='Set to 1 to add noise to signals, 0 to disable')
+    parser.add_argument('--oversampling', type=int, choices=[0, 1], default=0,
+                        help='Set to 1 to enable oversampling, 0 to disable')
+    parser.add_argument('--shifting', type=int, choices=[0, 1], default=0,
+                        help='Set to 1 to enable shifting, 0 to disable')
+
     parser.add_argument('--oversampled_value', type=float, default=0.0005, 
                         help='Value to oversample around')
     parser.add_argument('--oversampling_upper_bound', type=float, default=0.0006, 
@@ -272,8 +284,6 @@ def parse_args():
                         help='Standard deviation of Gaussian noise')
     parser.add_argument('--output_dir', default='Training_Data', 
                         help='Directory to save output CSV files')
-    parser.add_argument('--shifting', type=bool, default=False, 
-                        help='Whether to shift the signal')
     parser.add_argument('--bound', type=float, default=0.08, 
                         help='Bound of the shift')
     return parser.parse_args()
@@ -353,4 +363,3 @@ if __name__ == "__main__":
         
         print("-" * 60)
         sys.exit(1)
-    

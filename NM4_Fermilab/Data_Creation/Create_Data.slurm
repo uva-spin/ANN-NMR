@@ -10,30 +10,29 @@
 
 # ===== Global Configuration =====
 # Set these variables to configure the job
-PROJECT_DIR="/project/ptgroup/Devin/NMR_Final/Testing"  ### Change this to your own directory
-OUTPUT_DIR="${PROJECT_DIR}/Training_Data"
-OUTPUT_FILENAME="Test.csv"  # Global variable for output filename
+PROJECT_DIR="..."  ### Change this to your own directory
+OUTPUT_DIR="${PROJECT_DIR}/Test"
+OUTPUT_FILENAME="Deuteron_1_60_With_Noise_500K.csv"  # Global variable for output filename
 MODE="deuteron"                       # Options: deuteron, proton
-NUM_SAMPLES=1000                      # Number of samples per task ### TOTAL NUMBER OF SAMPLES = NUM_SAMPLES * SLURM_ARRAY_TASK_MAX
-ADD_NOISE=False                           # False=no noise, True=add noise
+NUM_SAMPLES=10                      # Number of samples per task ### TOTAL NUMBER OF SAMPLES = NUM_SAMPLES * SLURM_ARRAY_TASK_MAX
+ADD_NOISE=1                           # 0=no noise, 1=add noise
 
-OVERSAMPLING=True                        # False=no oversampling, True=enable oversampling
+OVERSAMPLING=0                        # 0=no oversampling, 1=enable oversampling
 OVERSAMPLED_VALUE=0.0005              # Value to oversample around
 OVERSAMPLING_UPPER_BOUND=0.0006       # Upper bound for oversampling range
 OVERSAMPLING_LOWER_BOUND=0.0004       # Lower bound for oversampling range
 UPPER_BOUND=0.6                       # Upper bound for P value (not oversampled)
-LOWER_BOUND=0.1                       # Lower bound for P value (not oversampled)
+LOWER_BOUND=0.01                       # Lower bound for P value (not oversampled)
 P_MAX=0.6                             # Maximum polarization value
-ALPHA=2.0                             # Decay rate for power law distribution
-BASELINE=True                         # False=no baseline, True=add baseline
-NOISE_LEVEL=0.000002                  # Standard deviation of Gaussian noise
-SHIFTING=False                         # False=no shifting, True=enable shifting
+ALPHA=0.3                             # Decay rate for power law distribution
+BASELINE=1                         # 0=no baseline, 1=add baseline
+NOISE_LEVEL=0.00002                  # Standard deviation of Gaussian noise
+SHIFTING=0                         # 0=no shifting, 1=enable shifting
 BOUND=0.08                            # Bound for shifting
 
 # Create job_logs directory if it doesn't exist
 mkdir -p job_logs
 
-# Print job details for logging
 echo "Starting job ${SLURM_JOB_ID} on $(hostname) at $(date)"
 echo "Array task ID: ${SLURM_ARRAY_TASK_ID}"
 echo "Configuration:"
@@ -56,10 +55,15 @@ echo "  - Shifting: ${SHIFTING}"
 echo "  - Bound: ${BOUND}"
 
 module purge
+echo "Modules purged"
 module spider miniforge/24.3.0-py3.11
+echo "Miniforge module spidered"
 module load apptainer tensorflow/2.17.0
+echo "TensorFlow module loaded"
 
 mkdir -p ${OUTPUT_DIR}
+echo "Output directory created: ${OUTPUT_DIR}"
+
 
 # ===== Part 1: Generate Signal Data =====
 echo "Generating signal data..."
@@ -88,7 +92,6 @@ noise_level = sys.argv[14]
 shifting = sys.argv[15]
 bound = sys.argv[16]
 
-# Print output directory to help with debugging
 output_dir = "${OUTPUT_DIR}"
 print(f"Output directory: {output_dir}")
 print(f"Current working directory: {os.getcwd()}")
@@ -96,7 +99,10 @@ print(f"Current working directory: {os.getcwd()}")
 # Construct the command to run the signal generator
 cmd = [
     "python", "Create_Training_Data.py",
-    job_id, mode, num_samples, add_noise,
+    "--job_id", job_id,
+    "--mode", mode,
+    "--num_samples", num_samples,
+    "--add_noise", add_noise,
     "--oversampling", oversampling,
     "--oversampled_value", oversampled_value,
     "--oversampling_upper_bound", oversampling_upper_bound,
@@ -121,6 +127,7 @@ sys.exit(result.returncode)
 EOF
 
 # Run the wrapper script with all parameters
+echo "Running signal generation script using apptainer..."
 apptainer run --nv $CONTAINERDIR/tensorflow-2.17.0.sif run_signal_generator.py \
     ${SLURM_ARRAY_TASK_ID} \
     ${MODE} \
@@ -148,7 +155,8 @@ fi
 echo "Signal generation complete for task ${SLURM_ARRAY_TASK_ID}"
 
 # ===== Part 2: Create the merge.py script directly =====
-# Create the merge.py script in the current directory
+echo "Creating the merge.py script..."
+
 cat > merge.py << 'EOF'
 import pandas as pd
 import glob
@@ -191,6 +199,7 @@ EOF
 
 # ===== Part 3: Combine CSV Files (only run by the last array job) =====
 # We'll use a job dependency to trigger this after all array jobs finish
+echo "Checking if this is the last array job..."
 if [ "${SLURM_ARRAY_TASK_ID}" -eq "${SLURM_ARRAY_TASK_MAX}" ]; then
     echo "This is the last array job. Submitting the merge job."
     
@@ -213,37 +222,17 @@ OUTPUT_FILENAME="${OUTPUT_FILENAME}"
 
 module purge
 module load miniforge/24.3.0-py3.11
+module load apptainer tensorflow/2.17.0
 
-echo "Starting CSV merge job at \$(date)"
-echo "Output file will be: \${OUTPUT_DIR}/\${OUTPUT_FILENAME}"
-
-# Run the merger script with parameters
-echo "Running merge script..."
-python merge.py "\${OUTPUT_DIR}" "\${OUTPUT_FILENAME}"
-
-# Check if merge was successful
-if [ \$? -ne 0 ]; then
-    echo "Error: CSV merge failed. Exiting."
-    exit 1
-fi
-
-echo "CSV merge completed successfully at \$(date)"
-echo "Output file: \${OUTPUT_DIR}/\${OUTPUT_FILENAME}"
-
-# Print file size
-echo "File size: \$(du -h \${OUTPUT_DIR}/\${OUTPUT_FILENAME} | cut -f1)"
-
-echo "Job complete."
+# Run the merge script inside apptainer container
+apptainer run --nv $CONTAINERDIR/tensorflow-2.17.0.sif merge.py \
+    ${OUTPUT_DIR} ${OUTPUT_FILENAME}
 EOF
 
-    # Make the merge script executable
-    chmod +x ${MERGE_SCRIPT}
-    
-    # Submit the merge job with a dependency on the entire array job
-    sbatch --dependency=afterok:${SLURM_ARRAY_JOB_ID} ${MERGE_SCRIPT}
+    sbatch ${MERGE_SCRIPT}
+    echo "Merge job submitted."
 else
     echo "This is not the last array job. Skipping merge step."
 fi
 
-echo "Job ${SLURM_JOB_ID}, task ${SLURM_ARRAY_TASK_ID} completed at $(date)"
-exit 0
+echo "Job ${SLURM_JOB_ID} complete at $(date)"
