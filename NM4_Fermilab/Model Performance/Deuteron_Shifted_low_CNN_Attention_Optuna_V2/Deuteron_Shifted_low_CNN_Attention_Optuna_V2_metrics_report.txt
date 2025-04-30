@@ -1,0 +1,25 @@
+Model Evaluation Metrics - Deuteron_Shifted_low_CNN_Attention_Optuna_V2
+==================================================
+
+Basic Error Metrics:
+MAE: 0.00021407
+RMSE: 0.00030379
+Max Absolute Error: 0.00212846
+R²: 0.99999925
+
+Relative Error Metrics:
+Median RPE: 0.00082%
+Mean RPE: 0.00165%
+90th Percentile RPE: 0.00423%
+95th Percentile RPE: 0.00568%
+99th Percentile RPE: 0.00921%
+
+Threshold Metrics:
+% within 0.0001 abs error: 35.3684%
+% within 0.001 abs error: 98.8947%
+% within 0.01 abs error: 100.0000%
+% within 0.1 abs error: 100.0000%
+% within 0.01% rel error: 99.2895%
+% within 0.1% rel error: 100.0000%
+% within 1% rel error: 100.0000%
+% within 5% rel error: 100.0000%

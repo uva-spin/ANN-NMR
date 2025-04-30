@@ -6,6 +6,15 @@ import numpy as np
 import random
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from Custom_Scripts.Misc_Functions import *
+from Custom_Scripts.Loss_Functions import *
+from Custom_Scripts.Lineshape import *
+from Plotting.Plot_Script import *
+import optuna
+from optuna.integration import TFKerasPruningCallback
 
 
 
@@ -13,7 +22,18 @@ random.seed(42)
 np.random.seed(42)
 tf.random.set_seed(42)
 
-data = pd.read_csv('Sample_1.csv')
+data_path = find_file("Shifted_low.csv")  
+version = 'Deuteron_Shifted_low_CNN_Attention_Optuna_V2'  
+performance_dir = f"../Model Performance/{version}"  
+model_dir = f"../Models/{version}"  
+os.makedirs(performance_dir, exist_ok=True)
+os.makedirs(model_dir, exist_ok=True)
+
+try:
+    data = pd.read_csv(data_path)
+    print("Data loaded successfully!")
+except Exception as e:
+    print(f"Error loading data: {e}")
 
 train_data, temp_data = train_test_split(data, test_size=0.3, random_state=42)
 val_data, test_data = train_test_split(temp_data, test_size=1/3, random_state=42)
@@ -59,26 +79,26 @@ def residual_block(x, filters):
     conv = layers.LayerNormalization()(conv)
     return layers.Add()([shortcut, conv])
 
-def Polarization(input_shape=(500, 1)):
+def build_model(params, input_shape=(500, 1)):
     inputs = Input(shape=input_shape)
-    x = multi_scale_conv_block(inputs, 32)
-    x = residual_block(x, x.shape[-1])
+    x = multi_scale_conv_block(inputs, params['filters'])
+    
+    # Add multiple residual blocks based on the num_residual_blocks parameter
+    for _ in range(params['num_residual_blocks']):
+        x = residual_block(x, x.shape[-1])
+    
     x = attention_block(x)
     x = layers.GlobalAveragePooling1D()(x)
-    # x = layers.BatchNormalization()(x)
 
-    classifier = layers.Dense(16, activation='relu')(x)
+    classifier = layers.Dense(params['classifier_units'], activation='relu')(x)
     is_low_P = layers.Dense(1, activation='sigmoid')(classifier)
-
-
-    ### Let's introduce a temperature parameter to the sigmoid function to smooth the transition
-    temperature = 3.0
+    temperature = params['temperature']
     is_low_P = layers.Activation(lambda z: tf.sigmoid(z * temperature), name='classifier')(is_low_P)
 
-    low_reg = layers.Dense(32, activation='relu')(x)
+    low_reg = layers.Dense(params['reg_units'], activation='relu')(x)
     low_reg = layers.Dense(1, name='reg_low')(low_reg)
 
-    high_reg = layers.Dense(32, activation='relu')(x)
+    high_reg = layers.Dense(params['reg_units'], activation='relu')(x)
     high_reg = layers.Dense(1, name='reg_high')(high_reg)
 
     output = layers.Lambda(lambda tensors: tensors[0] * tensors[1] + (1 - tensors[0]) * tensors[2], name='P_output')([is_low_P, low_reg, high_reg])
@@ -86,12 +106,114 @@ def Polarization(input_shape=(500, 1)):
     model = models.Model(inputs=inputs, outputs=[is_low_P, output])
     return model
 
-def compile_and_train(model, X_train, y_train, epochs=50, batch_size=32):
-    y_class = (y_train < 10.0).astype(int) ### True/False if P is less than whatever percentage
+def objective(trial):
+    params = {
+        'filters': trial.suggest_categorical('filters', [16, 32, 64, 128]),
+        'classifier_units': trial.suggest_categorical('classifier_units', [8, 16, 32, 64]),
+        'reg_units': trial.suggest_categorical('reg_units', [16, 32, 64, 128]),
+        'temperature': trial.suggest_float('temperature', 1.0, 5.0),
+        'learning_rate': trial.suggest_loguniform('learning_rate', 1e-5, 1e-2),
+        'batch_size': trial.suggest_categorical('batch_size', [16, 32, 64, 128]),
+        'num_residual_blocks': trial.suggest_int('num_residual_blocks', 1, 5),
+        'epochs': 50,
+    }
+
+    model = build_model(params)
+    y_class = (y_train < 10.0).astype(int)
     y_reg = y_train.astype('float32')
 
+    # Add cosine decay learning rate schedule
+    initial_learning_rate = params['learning_rate']
+    decay_steps = params['epochs'] * (len(X_train) // params['batch_size'])
+    cosine_decay = tf.keras.optimizers.schedules.CosineDecay(
+        initial_learning_rate=initial_learning_rate,
+        decay_steps=decay_steps,
+        alpha=0.0  # Final learning rate value as a fraction of initial_learning_rate
+    )
+
     model.compile(
-        optimizer='adam',
+        optimizer=tf.keras.optimizers.Adam(learning_rate=cosine_decay),
+        loss={'classifier': 'binary_crossentropy', 'P_output': 'mse'},
+        loss_weights={'classifier': 0.2, 'P_output': 1.0},
+        metrics={'P_output': 'mae'}
+    )
+
+    early_stopping = tf.keras.callbacks.EarlyStopping(
+        monitor='val_P_output_mae', 
+        patience=10, 
+        restore_best_weights=True,
+        mode='min'
+    )
+
+    history = model.fit(
+        X_train, {'classifier': y_class, 'P_output': y_reg},
+        validation_data=(X_val, {'classifier': (y_val < 10.0).astype(int), 'P_output': y_val}),
+        epochs=params['epochs'],
+        batch_size=params['batch_size'],
+        callbacks=[early_stopping, TFKerasPruningCallback(trial, 'val_P_output_mae')],
+        verbose=0
+    )
+
+    val_mae = min(history.history['val_P_output_mae'])
+    return val_mae
+
+if __name__ == "__main__":
+    
+    print("Starting hyperparameter optimization with Optuna...")
+    # Create the Optuna_Studies directory if it doesn't exist
+    studies_dir = os.path.join(os.path.dirname(__file__), "Optuna_Studies")
+    os.makedirs(studies_dir, exist_ok=True)
+
+    # Create the database path using proper path joining
+    db_path = os.path.join(studies_dir, f"optuna_study_{version}.db")
+    storage = optuna.storages.RDBStorage(
+            f"sqlite:///{db_path}",
+            skip_compatibility_check=False, 
+            skip_table_creation=False  
+        )
+    try:
+        study = optuna.create_study(
+                direction='minimize', 
+                pruner=optuna.pruners.MedianPruner(), 
+                study_name=version, 
+                storage=storage,
+                load_if_exists=True
+            )
+    except Exception as e:
+        print(f"Error creating study: {e}")
+    
+    study.optimize(objective, n_trials=100) 
+
+    print("Best trial:")
+    trial = study.best_trial
+    print(f"  Value (val_mae): {trial.value}")
+    print("  Params: ")
+    for key, value in trial.params.items():
+        print(f"    {key}: {value}")
+
+    # Save best params
+    with open(f"{performance_dir}/best_params.json", "w") as f:
+        import json
+        json.dump(trial.params, f, indent=4)
+
+    # Train final model with best params
+    best_params = trial.params
+    best_params['epochs'] = 100
+    model = build_model(best_params)
+    y_class = (y_train < 10.0).astype(int)
+    y_reg = y_train.astype('float32')
+
+    # Add cosine decay learning rate schedule for final training
+    initial_learning_rate = best_params['learning_rate']
+    decay_steps = best_params['epochs'] * (len(X_train) // best_params['batch_size'])
+    cosine_decay = tf.keras.optimizers.schedules.CosineDecay(
+        initial_learning_rate=initial_learning_rate,
+        decay_steps=decay_steps,
+        alpha=0.0
+    )
+
+    model.compile(
+        optimizer=tf.keras.optimizers.Adam(learning_rate=cosine_decay),
         loss={'classifier': 'binary_crossentropy', 'P_output': 'mse'},
         loss_weights={'classifier': 0.2, 'P_output': 1.0},
         metrics={'P_output': 'mae'}
@@ -99,96 +221,30 @@ def compile_and_train(model, X_train, y_train, epochs=50, batch_size=32):
 
     history = model.fit(
         X_train, {'classifier': y_class, 'P_output': y_reg},
-        validation_split=0.1, epochs=epochs, batch_size=batch_size, verbose=1
+        validation_data=(X_val, {'classifier': (y_val < 10.0).astype(int), 'P_output': y_val}),
+        epochs=best_params['epochs'],
+        batch_size=best_params['batch_size'],
+        callbacks=[tf.keras.callbacks.EarlyStopping(
+            monitor='val_P_output_mae', 
+            patience=20, 
+            restore_best_weights=True,
+            mode='min'
+        )],
+        verbose=1
     )
-    return history
 
-def plot_history(history):
-    plt.figure(figsize=(12, 5))
-    
-    # classifier loss
-    plt.subplot(1, 2, 1)
-    plt.plot(history.history['classifier_loss'], label='Classifier Loss')
-    plt.plot(history.history['val_classifier_loss'], label='Val Classifier Loss')
-    plt.title('Classifier Loss')
-    plt.xlabel('Epoch')
-    plt.ylabel('Loss')
-    plt.legend()
+    # Save model
+    model.save(f"{model_dir}/best_model.keras")
 
-    # MAE
-    plt.subplot(1, 2, 2)
-    plt.plot(history.history['P_output_mae'], label='Regression MAE')
-    plt.plot(history.history['val_P_output_mae'], label='Val Regression MAE')
-    plt.title('Regression MAE')
-    plt.xlabel('Epoch')
-    plt.ylabel('MAE')
-    plt.legend()
-    
-    plt.tight_layout()
-    plt.show()
-
-def evaluate_and_plot_errors(model, X_test, y_test):
-
+    # Evaluate and plot
     _, y_pred = model.predict(X_test)
-    
-    relative_errors = ((y_pred - y_test) / y_test) * 100
-    absolute_errors = np.abs(y_pred - y_test)
-    mae = np.mean(absolute_errors)
-    
-    eval_df = pd.DataFrame({
-        'True_P': y_test.flatten(),
-        'Predicted_P': y_pred.flatten(),
-        'Absolute_Error': absolute_errors.flatten(),
-        'Relative_Percent_Error': relative_errors.flatten()
-    })
-    
-    eval_df.to_csv('model_evaluation_metrics_higher.csv', index=False)
-    
-    plt.figure(figsize=(10, 6))
-    plt.scatter(y_test, relative_errors, alpha=0.5)
-    plt.axhline(y=0, color='r', linestyle='--', label='Zero Error')
-    
-    mean_error = np.mean(relative_errors)
-    plt.axhline(y=mean_error, color='g', linestyle='--', label=f'Mean Error: {mean_error:.2f}%')
-    
-    plt.xlabel('True Polarization (P)')
-    plt.ylabel('Relative Percent Error (%)')
-    plt.title('Distribution of Relative Percent Errors vs True Polarization')
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    plt.savefig('error_distribution_higher.png', dpi=300, bbox_inches='tight')
-    plt.close()
-    
-    plt.figure(figsize=(10, 6))
-    plt.hist(relative_errors, bins=50, alpha=0.7)
-    plt.axvline(x=mean_error, color='r', linestyle='--', label=f'Mean Error: {mean_error:.2f}%')
-    plt.xlabel('Relative Percent Error (%)')
-    plt.ylabel('Count')
-    plt.title('Histogram of Relative Percent Errors')
-    plt.legend()
-    plt.grid(True, alpha=0.3)
-    plt.savefig('error_histogram_higher.png', dpi=300, bbox_inches='tight')
-    plt.close()
-    
-    print(f"Mean Relative Error: {mean_error:.2f}%")
-    print(f"Median Relative Error: {np.median(relative_errors):.2f}%")
-    print(f"Standard Deviation of Errors: {np.std(relative_errors):.2f}%")
-    print(f"Maximum Error: {np.max(np.abs(relative_errors)):.2f}%")
-    print(f"Mean Absolute Error: {mae:.4f}")
-    
-    with open('evaluation_statistics_higher.txt', 'w') as f:
-        f.write(f"Mean Relative Error: {mean_error:.2f}%\n")
-        f.write(f"Median Relative Error: {np.median(relative_errors):.2f}%\n")
-        f.write(f"Standard Deviation of Errors: {np.std(relative_errors):.2f}%\n")
-        f.write(f"Maximum Error: {np.max(np.abs(relative_errors)):.2f}%\n")
-        f.write(f"Mean Absolute Error: {mae:.4f}\n")
-    
-    return relative_errors, eval_df
+    y_test_flat = y_test.flatten()
+    y_pred_flat = y_pred.flatten()
 
-model = Polarization()
-history = compile_and_train(model, X_train, y_train)
-plot_history(history)
+    # Use your custom plotting functions
+    plot_rpe_and_residuals(y_test_flat, y_pred_flat, performance_dir, version)
+    plot_enhanced_results(y_test_flat, y_pred_flat, performance_dir, version)
+    plot_training_history(history, performance_dir, version)
 
-relative_errors, eval_df = evaluate_and_plot_errors(model, X_test, y_test)
 
 

@@ -42,7 +42,7 @@ def plot_rpe_and_residuals_over_range(y_true, y_pred, performance_dir, version):
 
 
         # Set titles and labels for residuals histogram
-        ax.set_title(f'Residuals Histogram: {lower*100:.6f}% to {upper*100:.6f}%', fontsize=16)
+        ax.set_title(f'Residuals Histogram: {lower:.6f}% to {upper:.6f}%', fontsize=16)
         ax.set_xlabel('Residuals', fontsize=14)
         ax.set_ylabel('Density', fontsize=14)
         ax.legend(fontsize=12)
@@ -51,7 +51,7 @@ def plot_rpe_and_residuals_over_range(y_true, y_pred, performance_dir, version):
         # Create subplot for RPE vs. Polarization using Seaborn
         ax_rpe = plt.subplot(2, 3, valid_bins + 3)  # Positioning in the second row
         sns.scatterplot(x=y_true_range, y=rpe, marker='o', color='purple', ax=ax_rpe)
-        ax_rpe.set_title(f'RPE vs. Polarization: {lower*100:.4f}% to {upper*100:.4f}%', fontsize=16)
+        ax_rpe.set_title(f'RPE vs. Polarization: {lower:.6f}% to {upper:.6f}%', fontsize=16)
         ax_rpe.set_xlabel('Polarization Values', fontsize=14)
         ax_rpe.set_ylabel('Relative Percent Error (%)', fontsize=14)
         ax_rpe.grid(True, linestyle='--', alpha=0.7)
@@ -178,8 +178,8 @@ def plot_rpe_and_residuals(y_true, y_pred, performance_dir, version, figsize=(18
     # Ensure directory exists
     os.makedirs(performance_dir, exist_ok=True)
     
-    y_true = np.array(y_true).flatten()*100
-    y_pred = np.array(y_pred).flatten()*100
+    y_true = np.array(y_true).flatten()
+    y_pred = np.array(y_pred).flatten()
     
     # Calculate metrics
     residuals = y_true - y_pred
@@ -579,8 +579,8 @@ def plot_enhanced_results(y_true, y_pred, output_dir, version_name):
             rc={"lines.linewidth": 2.5, "font.sans-serif": ['Arial', 'DejaVu Sans']})
     
     # Prepare data
-    y_true = y_true.flatten()*100
-    y_pred = y_pred.flatten()*100
+    y_true = y_true.flatten()
+    y_pred = y_pred.flatten()
     residuals = (y_true - y_pred)
     rpe = np.abs((y_true - y_pred) / np.maximum(np.abs(y_true), 1e-10))
     
@@ -952,14 +952,17 @@ def plot_training_history(history, output_dir, version_name):
     plt.figure(figsize=(12, 8))
     
     # Plot metrics with improved styling
-    plt.plot(epochs, history['mae'], color=metrics_palette[0], marker='o', markersize=4, 
-             label='Training MAE', alpha=0.9, markevery=max(1, len(epochs)//20))
-    plt.plot(epochs, history['val_mae'], color=metrics_palette[1], marker='s', markersize=4, 
+    if 'mae' in history:
+        plt.plot(epochs, history['mae'], color=metrics_palette[0], marker='o', markersize=4, 
+                label='Training MAE', alpha=0.9, markevery=max(1, len(epochs)//20))
+    if 'val_mae' in history:
+        plt.plot(epochs, history['val_mae'], color=metrics_palette[1], marker='s', markersize=4, 
              label='Validation MAE', alpha=0.9, markevery=max(1, len(epochs)//20))
     
     # Add min/max markers for MAE
-    min_val_mae_epoch = np.argmin(history['val_mae']) + 1
-    min_val_mae = history['val_mae'][min_val_mae_epoch - 1]
+    if 'val_mae' in history:
+        min_val_mae_epoch = np.argmin(history['val_mae']) + 1
+        min_val_mae = history['val_mae'][min_val_mae_epoch - 1]
     plt.scatter([min_val_mae_epoch], [min_val_mae], s=100, color=metrics_palette[0], 
                 marker='*', label=f'Best Val MAE: {min_val_mae:.6f}', zorder=5)
     
@@ -1110,8 +1113,14 @@ def plot_training_history(history, output_dir, version_name):
         y_pos -= 0.06
         
         # Calculate improvements
-        loss_improvement = (history['val_loss'][0] - min_val_loss) / history['val_loss'][0] * 100
-        mae_improvement = (history['val_mae'][0] - min_val_mae) / history['val_mae'][0] * 100
+        if 'val_loss' in history:
+            loss_improvement = (history['val_loss'][0] - min_val_loss) / history['val_loss'][0] * 100
+        else:
+            loss_improvement = 0
+        if 'val_mae' in history:
+            mae_improvement = (history['val_mae'][0] - min_val_mae) / history['val_mae'][0] * 100
+        else:
+            mae_improvement = 0
         
         ax3.text(0.1, y_pos, f"Loss: {loss_improvement:.2f}%", fontsize=10)
         y_pos -= 0.05

@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 from scipy.stats import norm
 import tensorflow as tf
 from tensorflow.keras.layers import Layer
-from Lineshape import *
+from Custom_Scripts.Lineshape import *
 import sys
 from io import StringIO
 
@@ -67,7 +67,7 @@ def find_file(filename, start_dir='.'):
     current_dir = os.path.abspath(start_dir)
     
     # Search up to 2 levels up from the starting directory
-    for _ in range(3):  # 0, 1, 2 levels up
+    for _ in range(5):  # 0, 1, 2 levels up
         # Use glob to find the file in current directory and all subdirectories
         matches = glob.glob(os.path.join(current_dir, '**', filename), recursive=True)
         

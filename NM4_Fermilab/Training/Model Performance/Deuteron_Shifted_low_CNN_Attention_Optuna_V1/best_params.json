@@ -1,0 +1,8 @@
+{
+    "filters": 16,
+    "classifier_units": 64,
+    "reg_units": 128,
+    "temperature": 3.581620240843617,
+    "learning_rate": 2.7745114434908726e-05,
+    "batch_size": 64
+}
