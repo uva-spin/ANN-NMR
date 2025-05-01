@@ -83,7 +83,6 @@ def build_model(params, input_shape=(500, 1)):
     inputs = Input(shape=input_shape)
     x = multi_scale_conv_block(inputs, params['filters'])
     
-    # Add multiple residual blocks based on the num_residual_blocks parameter
     for _ in range(params['num_residual_blocks']):
         x = residual_block(x, x.shape[-1])
     
@@ -160,11 +159,9 @@ def objective(trial):
 if __name__ == "__main__":
     
     print("Starting hyperparameter optimization with Optuna...")
-    # Create the Optuna_Studies directory if it doesn't exist
     studies_dir = os.path.join(os.path.dirname(__file__), "Optuna_Studies")
     os.makedirs(studies_dir, exist_ok=True)
 
-    # Create the database path using proper path joining
     db_path = os.path.join(studies_dir, f"optuna_study_{version}.db")
     storage = optuna.storages.RDBStorage(
             f"sqlite:///{db_path}",
@@ -191,19 +188,16 @@ if __name__ == "__main__":
     for key, value in trial.params.items():
         print(f"    {key}: {value}")
 
-    # Save best params
     with open(f"{performance_dir}/best_params.json", "w") as f:
         import json
         json.dump(trial.params, f, indent=4)
 
-    # Train final model with best params
     best_params = trial.params
     best_params['epochs'] = 100
     model = build_model(best_params)
     y_class = (y_train < 10.0).astype(int)
     y_reg = y_train.astype('float32')
 
-    # Add cosine decay learning rate schedule for final training
     initial_learning_rate = best_params['learning_rate']
     decay_steps = best_params['epochs'] * (len(X_train) // best_params['batch_size'])
     cosine_decay = tf.keras.optimizers.schedules.CosineDecay(
@@ -233,15 +227,12 @@ if __name__ == "__main__":
         verbose=1
     )
 
-    # Save model
     model.save(f"{model_dir}/best_model.keras")
 
-    # Evaluate and plot
     _, y_pred = model.predict(X_test)
     y_test_flat = y_test.flatten()
     y_pred_flat = y_pred.flatten()
 
-    # Use your custom plotting functions
     plot_rpe_and_residuals(y_test_flat, y_pred_flat, performance_dir, version)
     plot_enhanced_results(y_test_flat, y_pred_flat, performance_dir, version)
     plot_training_history(history, performance_dir, version)

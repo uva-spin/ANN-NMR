@@ -175,23 +175,19 @@ def plot_rpe_and_residuals(y_true, y_pred, performance_dir, version, figsize=(18
     ### Debugging Message ###
     print(f"Plotting RPE and Residuals for {version}")
      
-    # Ensure directory exists
     os.makedirs(performance_dir, exist_ok=True)
     
     y_true = np.array(y_true).flatten()
     y_pred = np.array(y_pred).flatten()
     
-    # Calculate metrics
     residuals = y_true - y_pred
     percentage_error = (residuals / y_true) * 100
     rpe = np.abs(percentage_error)  # Relative Percent Error
     
-    # Calculate statistical measures
     mae = np.mean(np.abs(residuals))
     mape = np.mean(rpe)
     rmse = np.sqrt(np.mean(residuals**2))
     
-    # Calculate correlation coefficient
     corr_coef = np.corrcoef(y_true, y_pred)[0, 1]
     
     # Create a DataFrame for easy filtering and analysis
@@ -204,16 +200,13 @@ def plot_rpe_and_residuals(y_true, y_pred, performance_dir, version, figsize=(18
     })
     
     
-    # Remove any potential infinity or NaN values
     results_df = results_df.replace([np.inf, -np.inf], np.nan).dropna()
     
     results_df.to_csv(os.path.join(performance_dir, f'{version}_results.csv'), index=False)
     
-    # Style settings
     plt.style.use('seaborn-v0_8-whitegrid')
     colors = ['#3498db', '#e74c3c', '#2ecc71', '#f39c12', '#9b59b6']
     
-    # Create figure with 2x2 subplots
     fig = plt.figure(figsize=figsize)
     gs = fig.add_gridspec(2, 3)
     

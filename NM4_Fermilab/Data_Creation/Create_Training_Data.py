@@ -148,7 +148,7 @@ class SignalGenerator:
         else:
             combined_signal = signal
         
-        if self.add_noise:
+        if self.add_noise == 1:
             noise = np.random.normal(0, self.noise_level, size=x.shape)
             return combined_signal + noise, combined_signal, noise
         else:
@@ -214,7 +214,7 @@ class SignalGenerator:
             noisy_signal, clean_signal, noise = self._add_baseline_and_noise(signal, x)
             
             # Calculate SNR if noise is added
-            if self.add_noise and noise is not None and np.max(np.abs(noise)) > 0:
+            if self.add_noise == 1 and noise is not None and np.max(np.abs(noise)) > 0:
                 snr = np.max(np.abs(clean_signal)) / np.max(np.abs(noise))
                 snr_arr.append(snr)
             else:
