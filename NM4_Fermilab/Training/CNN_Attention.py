@@ -22,16 +22,16 @@ random.seed(42)
 np.random.seed(42)
 tf.random.set_seed(42)
 
-data_path = find_file("Shifted_low.csv")  
-version = 'Deuteron_Shifted_low_CNN_Attention_Optuna_V2'  
-performance_dir = f"../Model Performance/{version}"  
-model_dir = f"../Models/{version}"  
+data_path = find_file("Deuteron_05_60_No_Noise_1M.parquet")  
+version = 'Deuteron_05_60_No_Noise_1M_CNN_Attention_Optuna_V1'  
+performance_dir = f"Model_Performance/{version}"  
+model_dir = f"Models/{version}"  
 os.makedirs(performance_dir, exist_ok=True)
 os.makedirs(model_dir, exist_ok=True)
 
 try:
-    data = pd.read_csv(data_path)
-    print("Data loaded successfully!")
+    data = pd.read_parquet(data_path, engine='pyarrow')
+    print("Data loaded successfully from Parquet file!")
 except Exception as e:
     print(f"Error loading data: {e}")
 

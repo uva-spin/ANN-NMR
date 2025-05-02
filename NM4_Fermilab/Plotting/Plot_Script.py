@@ -155,28 +155,40 @@ def plot_training_history(history, performance_dir, version, figsize=(14, 8), dp
     plt.close(fig)
     print(f"Training history plot saved to {plot_path}")
     
-def plot_rpe_and_residuals(y_true, y_pred, performance_dir, version, figsize=(18, 10), dpi=600):
+def plot_enhanced_performance_metrics(y_true, y_pred, performance_dir, version, dpi=600):
     """
-    Plots comprehensive performance metrics including Relative Percent Error (RPE), 
-    residuals, and prediction vs actual for given true and predicted values.
-    Also creates a separate focused histogram of RPE for data points where y_true is 
-    around 0.05% ± 0.01% and a 3D histogram showing RPE distribution across true values.
-    Displays mean and standard deviation statistics without Gaussian fits.
-
-    Parameters:
-    - y_true: Array of true values.
-    - y_pred: Array of predicted values.
-    - performance_dir: Directory to save the plot.
-    - version: Version identifier for the plot filename.
-    - figsize: Size of the figure as a tuple (width, height).
-    - dpi: Resolution of the saved figure.
-    """
+    Creates individual, aesthetically enhanced plots for model performance evaluation:
+    - Actual vs Predicted plot
+    - Residuals distribution
+    - RPE (Relative Percent Error) distribution
+    - Residuals vs True Values
+    - RPE vs True Values
+    - Error metrics summary
+    - Focused RPE histogram
+    - 3D RPE distribution
+    - RPE heatmap
     
-    ### Debugging Message ###
-    print(f"Plotting RPE and Residuals for {version}")
-     
+    Parameters:
+    - y_true: Array of true values
+    - y_pred: Array of predicted values
+    - performance_dir: Directory to save the plots
+    - version: Version identifier for the plot filenames
+    - dpi: Resolution of saved figures (default: 600)
+    """
+    import os
+    import numpy as np
+    import pandas as pd
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+    from matplotlib.colors import LinearSegmentedColormap
+    from mpl_toolkits.mplot3d import Axes3D
+    
+    print(f"Creating enhanced performance plots for {version}")
+    
+    # Ensure directory exists
     os.makedirs(performance_dir, exist_ok=True)
     
+    # Prepare data
     y_true = np.array(y_true).flatten()
     y_pred = np.array(y_pred).flatten()
     
@@ -184,13 +196,13 @@ def plot_rpe_and_residuals(y_true, y_pred, performance_dir, version, figsize=(18
     percentage_error = (residuals / y_true) * 100
     rpe = np.abs(percentage_error)  # Relative Percent Error
     
+    # Calculate metrics
     mae = np.mean(np.abs(residuals))
     mape = np.mean(rpe)
     rmse = np.sqrt(np.mean(residuals**2))
-    
     corr_coef = np.corrcoef(y_true, y_pred)[0, 1]
     
-    # Create a DataFrame for easy filtering and analysis
+    # Create DataFrame
     results_df = pd.DataFrame({
         'True': y_true,
         'Predicted': y_pred,
@@ -199,166 +211,284 @@ def plot_rpe_and_residuals(y_true, y_pred, performance_dir, version, figsize=(18
         'RPE': rpe
     })
     
-    
+    # Handle infinities and NaNs
     results_df = results_df.replace([np.inf, -np.inf], np.nan).dropna()
     
+    # Save results data
     results_df.to_csv(os.path.join(performance_dir, f'{version}_results.csv'), index=False)
     
-    plt.style.use('seaborn-v0_8-whitegrid')
-    colors = ['#3498db', '#e74c3c', '#2ecc71', '#f39c12', '#9b59b6']
-    
-    fig = plt.figure(figsize=figsize)
-    gs = fig.add_gridspec(2, 3)
-    
-    # 1. Actual vs Predicted Plot
-    ax1 = fig.add_subplot(gs[0, 0])
-    # Plot the scatter points
-    sns.scatterplot(x=results_df['True'], y=results_df['Predicted'], alpha=0.6, 
-                   color=colors[0], edgecolor='k', s=50, ax=ax1)
-    
-    # Add perfect prediction line
-    min_val = min(results_df['True'].min(), results_df['Predicted'].min())
-    max_val = max(results_df['True'].max(), results_df['Predicted'].max())
-    margin = 0.1 * (max_val - min_val)
-    ax1.plot([min_val - margin, max_val + margin], [min_val - margin, max_val + margin], 
-             '--', color='gray', linewidth=1.5, label='Perfect Prediction')
-    
-    # Add regression line
-    sns.regplot(x=results_df['True'], y=results_df['Predicted'], 
-                scatter=False, color=colors[1], line_kws={'linewidth': 2}, ax=ax1)
-    
-    # Add text annotation with metrics
-    ax1.text(0.05, 0.95, f'Correlation: {corr_coef:.6f}\nMAE: {mae:.6f}\nRMSE: {rmse:.6f}',
-             transform=ax1.transAxes, fontsize=12, verticalalignment='top',
-             bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
-    
-    ax1.set_title('Actual vs. Predicted Values', fontsize=14, fontweight='bold')
-    ax1.set_xlabel('Actual Values', fontsize=12)
-    ax1.set_ylabel('Predicted Values', fontsize=12)
-    ax1.grid(True, linestyle='--', alpha=0.7)
-    ax1.legend(loc='best')
-    
-    # 2. Residuals Plot
-    ax2 = fig.add_subplot(gs[0, 1])
-    sns.histplot(results_df['Residuals'], bins=30, kde=False, stat="density", 
-                color=colors[2], edgecolor='black', alpha=0.6, ax=ax2)
-    
-    # Calculate and display mean and standard deviation
-    residuals_mean = results_df['Residuals'].mean()
-    residuals_std = results_df['Residuals'].std()
-    
-    # Add vertical line at the mean
-    ax2.axvline(x=residuals_mean, color='red', linestyle='-', linewidth=1.5, 
-               label=f'Mean: {residuals_mean:.6f}')
-    
-    # Shade the range within ±1 standard deviation
-    ax2.axvspan(residuals_mean - residuals_std, residuals_mean + residuals_std, 
-               alpha=0.2, color='red', 
-               label=f'±1σ: [{residuals_mean-residuals_std:.6f}, {residuals_mean+residuals_std:.6f}]')
-    
-    ax2.set_title('Residuals Distribution', fontsize=14, fontweight='bold')
-    ax2.set_xlabel('Residuals', fontsize=12)
-    ax2.set_ylabel('Density', fontsize=12)
-    ax2.legend(loc='best')
-    ax2.grid(True, linestyle='--', alpha=0.7)
-    
-    # 3. RPE Histogram
-    ax3 = fig.add_subplot(gs[0, 2])
-    sns.histplot(results_df['RPE'], bins=30, kde=False, stat="density", 
-                color=colors[3], edgecolor='black', alpha=0.6, ax=ax3)
-    
-    # Calculate and display mean and standard deviation
-    rpe_mean = results_df['RPE'].mean()
-    rpe_std = results_df['RPE'].std()
-    
-    # Add vertical line at the mean
-    ax3.axvline(x=rpe_mean, color='orange', linestyle='-', linewidth=1.5, 
-               label=f'Mean: {rpe_mean:.6f}')
-    
-    # Shade the range within ±1 standard deviation
-    ax3.axvspan(rpe_mean - rpe_std, rpe_mean + rpe_std, 
-               alpha=0.2, color='orange', 
-               label=f'±1σ: [{rpe_mean-rpe_std:.6f}, {rpe_mean+rpe_std:.6f}]')
-    
-    ax3.set_title('RPE Distribution', fontsize=14, fontweight='bold')
-    ax3.set_xlabel('Relative Percent Error (%)', fontsize=12)
-    ax3.set_ylabel('Density', fontsize=12)
-    ax3.legend(loc='best')
-    ax3.grid(True, linestyle='--', alpha=0.7)
-    
-    # 4. Residuals vs. True Values
-    ax4 = fig.add_subplot(gs[1, 0])
-    sns.scatterplot(x=results_df['True'], y=results_df['Residuals'], 
-                   alpha=0.6, color=colors[4], edgecolor='k', s=50, ax=ax4)
-    ax4.axhline(y=0, color='r', linestyle='-', linewidth=1.5)
-    
-    # Add regression line to see trends
-    sns.regplot(x=results_df['True'], y=results_df['Residuals'], 
-                scatter=False, color='green', line_kws={'linewidth': 2}, ax=ax4)
-    
-    ax4.set_title('Residuals vs. True Values', fontsize=14, fontweight='bold')
-    ax4.set_xlabel('True Values', fontsize=12)
-    ax4.set_ylabel('Residuals', fontsize=12)
-    ax4.grid(True, linestyle='--', alpha=0.7)
-    
-    # 5. RPE vs. True Values
-    ax5 = fig.add_subplot(gs[1, 1])
-    sns.scatterplot(x=results_df['True'], y=results_df['RPE'], 
-                   alpha=0.6, color='purple', edgecolor='k', s=50, ax=ax5)
-    
-    # Calculate and display the mean RPE
-    mean_rpe = results_df['RPE'].mean()
-    median_rpe = results_df['RPE'].median()
-    ax5.axhline(y=mean_rpe, color='r', linestyle='-', linewidth=1.5, 
-               label=f'Mean RPE: {mean_rpe:.2f}%')
-    ax5.axhline(y=median_rpe, color='green', linestyle='--', linewidth=1.5, 
-               label=f'Median RPE: {median_rpe:.2f}%')
-    
-    ax5.set_title('RPE vs. True Values', fontsize=14, fontweight='bold')
-    ax5.set_xlabel('True Values', fontsize=12)
-    ax5.set_ylabel('Relative Percent Error (%)', fontsize=12)
-    ax5.legend(loc='best')
-    ax5.grid(True, linestyle='--', alpha=0.7)
-    
-    # 6. Error Distribution
-    ax6 = fig.add_subplot(gs[1, 2])
-    
-    # Calculate error distribution statistics
-    error_stats = pd.DataFrame({
-        'Metric': ['Mean Abs Error', 'Mean RPE', 'RMSE', 'Correlation'],
-        'Value': [mae, mape, rmse, corr_coef]
+    # Set global plotting parameters
+    plt.rcParams.update({
+        'font.family': 'sans-serif',
+        'font.sans-serif': ['Helvetica', 'Arial'],
+        'font.size': 12,
+        'axes.titleweight': 'bold',
+        'axes.titlesize': 16,
+        'axes.labelsize': 13,
+        'axes.labelweight': 'bold',
+        'axes.spines.top': False,
+        'axes.spines.right': False,
+        'xtick.labelsize': 11,
+        'ytick.labelsize': 11,
+        'legend.fontsize': 11,
+        'legend.frameon': True,
+        'legend.framealpha': 0.7,
+        'legend.edgecolor': '#CCCCCC',
+        'figure.figsize': (10, 8),
+        'figure.dpi': 100
     })
     
-    # Create horizontal bar chart
-    sns.barplot(y='Metric', x='Value', data=error_stats, palette='viridis', ax=ax6)
+    # Custom color palette
+    palette = {
+        'main': '#3366CC',          # Deep blue
+        'secondary': '#FF6B6B',     # Coral red
+        'tertiary': '#4CAF50',      # Green
+        'quaternary': '#FFA726',    # Orange
+        'quinary': '#9C27B0',       # Purple
+        'text': '#2E3440',          # Dark gray
+        'grid': '#E5E9F0',          # Light gray
+        'highlight': '#FFEB3B'      # Yellow
+    }
     
-    # Add value labels on bars
-    for i, v in enumerate(error_stats['Value']):
-        ax6.text(v + 0.01, i, f'{v:.6f}', va='center')
-    
-    ax6.set_title('Error Metrics Summary', fontsize=14, fontweight='bold')
-    ax6.set_xlabel('Value', fontsize=12)
-    ax6.grid(True, linestyle='--', alpha=0.7, axis='x')
-    
-    # Add overall title and adjust layout
-    fig.suptitle(f'Model Performance Evaluation - {version}', fontsize=18, fontweight='bold', y=1.02)
-    plt.tight_layout()
-    
-    # Save plot
-    plot_path = os.path.join(performance_dir, f'{version}_Model_Performance.png')
-    plt.savefig(plot_path, dpi=dpi, bbox_inches='tight')
-    plt.close(fig)
-    print(f"Performance evaluation plots saved to {plot_path}")
+    # Custom color maps
+    blues_cmap = LinearSegmentedColormap.from_list('custom_blues', ['#E8F1FF', '#3366CC'])
+    reds_cmap = LinearSegmentedColormap.from_list('custom_reds', ['#FFE5E5', '#FF6B6B'])
+    greens_cmap = LinearSegmentedColormap.from_list('custom_greens', ['#E8F5E9', '#4CAF50'])
     
     # Save metrics to CSV
     metrics_df = pd.DataFrame({
-        'Metric': ['MAE', 'MAPE', 'RMSE', 'Correlation'],
+        'Metric': ['MAE', 'MAPE (%)', 'RMSE', 'Correlation'],
         'Value': [mae, mape, rmse, corr_coef]
     })
     metrics_path = os.path.join(performance_dir, f'{version}_metrics.csv')
     metrics_df.to_csv(metrics_path, index=False)
     print(f"Performance metrics saved to {metrics_path}")
     
+    ########################################
+    # 1. ACTUAL VS PREDICTED PLOT
+    ########################################
+    plt.figure(figsize=(10, 8))
+    
+    # Plot the scatter points with transparency
+    scatter = plt.scatter(results_df['True'], results_df['Predicted'], 
+                         alpha=0.7, color=palette['main'], edgecolor='white', 
+                         s=80, linewidth=0.5)
+    
+    # Add perfect prediction line
+    min_val = min(results_df['True'].min(), results_df['Predicted'].min())
+    max_val = max(results_df['True'].max(), results_df['Predicted'].max())
+    margin = 0.1 * (max_val - min_val)
+    plt.plot([min_val - margin, max_val + margin], [min_val - margin, max_val + margin], 
+             '--', color='gray', linewidth=1.5, label='Perfect Prediction')
+    
+    # Add regression line
+    sns.regplot(x=results_df['True'], y=results_df['Predicted'], 
+                scatter=False, color=palette['secondary'], 
+                line_kws={'linewidth': 2.5})
+    
+    # Add text annotation with metrics
+    plt.text(0.05, 0.95, 
+             f'Correlation: {corr_coef:.6f}\nMAE: {mae:.6f}\nRMSE: {rmse:.6f}',
+             transform=plt.gca().transAxes, fontsize=12, verticalalignment='top',
+             bbox=dict(boxstyle='round,pad=0.5', facecolor='white', alpha=0.8, 
+                      edgecolor=palette['grid']))
+    
+    plt.title(f'Actual vs. Predicted Values', fontsize=18, pad=15)
+    plt.xlabel('Actual Values', fontsize=14, labelpad=10)
+    plt.ylabel('Predicted Values', fontsize=14, labelpad=10)
+    plt.grid(True, linestyle='--', alpha=0.7, color=palette['grid'])
+    plt.legend(loc='best', fancybox=True)
+    
+    # Adjust plot limits with margin
+    plt.xlim(min_val - margin, max_val + margin)
+    plt.ylim(min_val - margin, max_val + margin)
+    
+    plt.tight_layout()
+    plot_path = os.path.join(performance_dir, f'{version}_Actual_vs_Predicted.png')
+    plt.savefig(plot_path, dpi=dpi, bbox_inches='tight')
+    plt.close()
+    print(f"Actual vs Predicted plot saved to {plot_path}")
+    
+    ########################################
+    # 2. RESIDUALS DISTRIBUTION
+    ########################################
+    plt.figure(figsize=(10, 8))
+    
+    # Create histogram with custom styling
+    ax = sns.histplot(results_df['Residuals'], bins=30, kde=True, 
+                     color=palette['main'], edgecolor='white', 
+                     alpha=0.8, line_kws={'linewidth': 2, 'color': palette['secondary']})
+    
+    # Calculate and display mean and standard deviation
+    residuals_mean = results_df['Residuals'].mean()
+    residuals_std = results_df['Residuals'].std()
+    
+    # Add vertical line at the mean
+    plt.axvline(x=residuals_mean, color=palette['secondary'], linestyle='-', linewidth=2, 
+               label=f'Mean: {residuals_mean:.6f}')
+    
+    # Shade the range within ±1 standard deviation
+    plt.axvspan(residuals_mean - residuals_std, residuals_mean + residuals_std, 
+               alpha=0.2, color=palette['secondary'], 
+               label=f'±1σ: [{residuals_mean-residuals_std:.6f}, {residuals_mean+residuals_std:.6f}]')
+    
+    # Zero reference line
+    plt.axvline(x=0, color='black', linestyle=':', linewidth=1.5,
+               label='Zero Error')
+    
+    plt.title('Residuals Distribution', fontsize=18, pad=15)
+    plt.xlabel('Residuals', fontsize=14, labelpad=10)
+    plt.ylabel('Density', fontsize=14, labelpad=10)
+    plt.grid(True, linestyle='--', alpha=0.7, color=palette['grid'])
+    plt.legend(loc='best', fancybox=True)
+    
+    plt.tight_layout()
+    plot_path = os.path.join(performance_dir, f'{version}_Residuals_Distribution.png')
+    plt.savefig(plot_path, dpi=dpi, bbox_inches='tight')
+    plt.close()
+    print(f"Residuals Distribution plot saved to {plot_path}")
+    
+    ########################################
+    # 3. RPE DISTRIBUTION
+    ########################################
+    plt.figure(figsize=(10, 8))
+    
+    # Create histogram with custom styling
+    ax = sns.histplot(results_df['RPE'], bins=30, kde=True, 
+                     color=palette['tertiary'], edgecolor='white', 
+                     alpha=0.8, line_kws={'linewidth': 2, 'color': palette['quaternary']})
+    
+    # Calculate and display mean and standard deviation
+    rpe_mean = results_df['RPE'].mean()
+    rpe_std = results_df['RPE'].std()
+    
+    # Add vertical line at the mean
+    plt.axvline(x=rpe_mean, color=palette['quaternary'], linestyle='-', linewidth=2, 
+               label=f'Mean: {rpe_mean:.6f}%')
+    
+    # Shade the range within ±1 standard deviation
+    plt.axvspan(rpe_mean - rpe_std, rpe_mean + rpe_std, 
+               alpha=0.2, color=palette['quaternary'], 
+               label=f'±1σ: [{rpe_mean-rpe_std:.6f}%, {rpe_mean+rpe_std:.6f}%]')
+    
+    plt.title('Relative Percent Error (RPE) Distribution', fontsize=18, pad=15)
+    plt.xlabel('Relative Percent Error (%)', fontsize=14, labelpad=10)
+    plt.ylabel('Density', fontsize=14, labelpad=10)
+    plt.grid(True, linestyle='--', alpha=0.7, color=palette['grid'])
+    plt.legend(loc='best', fancybox=True)
+    
+    plt.tight_layout()
+    plot_path = os.path.join(performance_dir, f'{version}_RPE_Distribution.png')
+    plt.savefig(plot_path, dpi=dpi, bbox_inches='tight')
+    plt.close()
+    print(f"RPE Distribution plot saved to {plot_path}")
+    
+    ########################################
+    # 4. RESIDUALS VS TRUE VALUES
+    ########################################
+    plt.figure(figsize=(10, 8))
+    
+    # Create scatter plot
+    plt.scatter(results_df['True'], results_df['Residuals'], 
+               alpha=0.7, color=palette['quinary'], edgecolor='white', 
+               s=80, linewidth=0.5)
+    
+    # Add horizontal line at zero
+    plt.axhline(y=0, color=palette['secondary'], linestyle='-', linewidth=1.5)
+    
+    # Add regression line to see trends
+    sns.regplot(x=results_df['True'], y=results_df['Residuals'], 
+                scatter=False, color=palette['tertiary'], line_kws={'linewidth': 2.5})
+    
+    plt.title('Residuals vs. True Values', fontsize=18, pad=15)
+    plt.xlabel('True Values', fontsize=14, labelpad=10)
+    plt.ylabel('Residuals', fontsize=14, labelpad=10)
+    plt.grid(True, linestyle='--', alpha=0.7, color=palette['grid'])
+    
+    plt.tight_layout()
+    plot_path = os.path.join(performance_dir, f'{version}_Residuals_vs_True.png')
+    plt.savefig(plot_path, dpi=dpi, bbox_inches='tight')
+    plt.close()
+    print(f"Residuals vs True Values plot saved to {plot_path}")
+    
+    ########################################
+    # 5. RPE VS TRUE VALUES
+    ########################################
+    plt.figure(figsize=(10, 8))
+    
+    # Create scatter plot
+    plt.scatter(results_df['True'], results_df['RPE'], 
+               alpha=0.7, color=palette['main'], edgecolor='white', 
+               s=80, linewidth=0.5)
+    
+    # Calculate and display the mean RPE
+    mean_rpe = results_df['RPE'].mean()
+    median_rpe = results_df['RPE'].median()
+    
+    plt.axhline(y=mean_rpe, color=palette['secondary'], linestyle='-', linewidth=1.5, 
+               label=f'Mean RPE: {mean_rpe:.2f}%')
+    plt.axhline(y=median_rpe, color=palette['tertiary'], linestyle='--', linewidth=1.5, 
+               label=f'Median RPE: {median_rpe:.2f}%')
+    
+    plt.title('RPE vs. True Values', fontsize=18, pad=15)
+    plt.xlabel('True Values', fontsize=14, labelpad=10)
+    plt.ylabel('Relative Percent Error (%)', fontsize=14, labelpad=10)
+    plt.grid(True, linestyle='--', alpha=0.7, color=palette['grid'])
+    plt.legend(loc='best', fancybox=True)
+    
+    plt.tight_layout()
+    plot_path = os.path.join(performance_dir, f'{version}_RPE_vs_True.png')
+    plt.savefig(plot_path, dpi=dpi, bbox_inches='tight')
+    plt.close()
+    print(f"RPE vs True Values plot saved to {plot_path}")
+    
+    ########################################
+    # 6. ERROR METRICS SUMMARY
+    ########################################
+    plt.figure(figsize=(10, 6))
+    
+    # Calculate error distribution statistics
+    error_stats = pd.DataFrame({
+        'Metric': ['Mean Abs Error', 'Mean RPE (%)', 'RMSE', 'Correlation'],
+        'Value': [mae, mape, rmse, corr_coef]
+    })
+    
+    # Create horizontal bar chart with custom styling
+    bars = plt.barh(
+        error_stats['Metric'], 
+        error_stats['Value'], 
+        color=[palette['main'], palette['tertiary'], palette['secondary'], palette['quaternary']], 
+        alpha=0.8, 
+        edgecolor='white', 
+        linewidth=1
+    )
+    
+    # Add value labels on bars
+    for i, bar in enumerate(bars):
+        width = bar.get_width()
+        plt.text(
+            width + width*0.01, 
+            bar.get_y() + bar.get_height()/2, 
+            f'{error_stats["Value"].iloc[i]:.6f}', 
+            va='center', 
+            fontsize=11, 
+            fontweight='bold'
+        )
+    
+    plt.title('Error Metrics Summary', fontsize=18, pad=15)
+    plt.xlabel('Value', fontsize=14, labelpad=10)
+    plt.grid(True, linestyle='--', alpha=0.7, color=palette['grid'], axis='x')
+    plt.gca().invert_yaxis()  # Invert y-axis for better readability
+    
+    plt.tight_layout()
+    plot_path = os.path.join(performance_dir, f'{version}_Error_Metrics_Summary.png')
+    plt.savefig(plot_path, dpi=dpi, bbox_inches='tight')
+    plt.close()
+    print(f"Error Metrics Summary plot saved to {plot_path}")
+    
+    ########################################
+    # 7. FOCUSED RPE HISTOGRAM
+    ########################################
     # Create a separate histogram for RPE where y_true is around 0.05% ± 0.01%
     target_true = 0.05  # 0.05%
     range_true = 0.01   # 0.01%
@@ -367,28 +497,28 @@ def plot_rpe_and_residuals(y_true, y_pred, performance_dir, version, figsize=(18
     filtered_df = results_df[(results_df['True'] >= target_true - range_true) & 
                             (results_df['True'] <= target_true + range_true)]
     
-    # Create a new figure for the focused histogram
-    plt.figure(figsize=(10, 6))
+    plt.figure(figsize=(10, 8))
     
     if len(filtered_df) > 0:
-        # Create histogram with KDE for the percentage errors of the filtered data
-        ax = sns.histplot(filtered_df['Percentage_Error'], bins=50, kde=False, stat="density", 
-                         color="#3498db", edgecolor='black', alpha=0.7)
+        # Create histogram with KDE
+        ax = sns.histplot(filtered_df['Percentage_Error'], bins=50, kde=True, 
+                         color=palette['main'], edgecolor='white', alpha=0.8,
+                         line_kws={'linewidth': 2, 'color': palette['secondary']})
         
         # Calculate mean and standard deviation
         mu = filtered_df['Percentage_Error'].mean()
         sigma = filtered_df['Percentage_Error'].std()
         
         # Add vertical line at the mean
-        plt.axvline(x=mu, color='green', linestyle='-', linewidth=1.5, 
+        plt.axvline(x=mu, color=palette['tertiary'], linestyle='-', linewidth=2, 
                    label=f'Mean: {mu:.8f}%')
         
         # Shade the range within ±1 sigma
-        plt.axvspan(mu - sigma, mu + sigma, alpha=0.2, color='green', 
+        plt.axvspan(mu - sigma, mu + sigma, alpha=0.2, color=palette['tertiary'], 
                    label=f'±1σ: [{mu-sigma:.8f}%, {mu+sigma:.8f}%]')
         
         # Add vertical line at zero (perfect prediction)
-        plt.axvline(x=0, color='red', linestyle='--', linewidth=1.5,
+        plt.axvline(x=0, color=palette['secondary'], linestyle='--', linewidth=1.5,
                    label='Perfect Prediction (0%)')
         
         # Add statistics annotation
@@ -403,29 +533,31 @@ def plot_rpe_and_residuals(y_true, y_pred, performance_dir, version, figsize=(18
         )
         plt.text(0.05, 0.95, stats_text, transform=plt.gca().transAxes, 
                 fontsize=12, verticalalignment='top',
-                bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+                bbox=dict(boxstyle='round,pad=0.5', facecolor='white', alpha=0.8, 
+                         edgecolor=palette['grid']))
     else:
         plt.text(0.5, 0.5, f"No data points found in the range {target_true - range_true}% to {target_true + range_true}%",
                 horizontalalignment='center', verticalalignment='center', fontsize=14)
     
     # Add title and labels with high precision
     plt.title(f'Distribution of Percentage Errors for True Values around {target_true:.6f}% ± {range_true:.6f}%', 
-             fontsize=16, fontweight='bold')
-    plt.xlabel('Percentage Error (%)', fontsize=14)
-    plt.ylabel('Density', fontsize=14)
+             fontsize=16, fontweight='bold', pad=15)
+    plt.xlabel('Percentage Error (%)', fontsize=14, labelpad=10)
+    plt.ylabel('Density', fontsize=14, labelpad=10)
     
-    plt.grid(True, linestyle='--', alpha=0.7)
-    plt.legend(loc='best')
+    plt.grid(True, linestyle='--', alpha=0.7, color=palette['grid'])
+    plt.legend(loc='best', fancybox=True)
+    
     plt.tight_layout()
-    
-    # Save the focused histogram separately
-    focused_path = os.path.join(performance_dir, f'{version}_Focused_PE_Histogram_True_{target_true}.png')
+    focused_path = os.path.join(performance_dir, f'{version}_Focused_PE_Histogram.png')
     plt.savefig(focused_path, dpi=dpi, bbox_inches='tight')
     plt.close()
-    print(f"Focused percentage error histogram for y_true ≈ {target_true}% saved to {focused_path}")
+    print(f"Focused percentage error histogram saved to {focused_path}")
     
-    # NEW ADDITION: Create a 3D histogram of RPE vs. True polarization values
-    fig = plt.figure(figsize=(12, 8))
+    ########################################
+    # 8. 3D RPE DISTRIBUTION
+    ########################################
+    fig = plt.figure(figsize=(12, 10))
     ax = fig.add_subplot(111, projection='3d')
     
     # Define number of bins for the 3D histogram
@@ -446,30 +578,37 @@ def plot_rpe_and_residuals(y_true, y_pred, performance_dir, version, figsize=(18
     # Create a mesh grid for the 3D plot
     X, Y = np.meshgrid(x_centers, y_centers)
     
-    # Plot the 3D histogram as a surface
+    # Plot the 3D histogram as a surface with enhanced styling
     surf = ax.plot_surface(
         X, Y, hist.T, 
         cmap='viridis',
         rstride=1, cstride=1, 
         alpha=0.8, 
         linewidth=0, 
-        antialiased=True
+        antialiased=True,
+        edgecolor='none'
     )
     
-    # Add a color bar to show the mapping
-    colorbar = fig.colorbar(surf, ax=ax, shrink=0.7, aspect=10)
-    colorbar.set_label('Frequency', fontsize=12)
+    # Add a color bar with enhanced styling
+    colorbar = fig.colorbar(surf, ax=ax, shrink=0.7, aspect=10, pad=0.1)
+    colorbar.set_label('Frequency', fontsize=14, fontweight='bold', labelpad=15)
+    colorbar.ax.tick_params(labelsize=11)
     
-    # Set labels
-    ax.set_xlabel('True Polarization Values (%)', fontsize=12)
-    ax.set_ylabel('Relative Percent Error (%)', fontsize=12)
-    ax.set_zlabel('Frequency', fontsize=12)
+    # Set labels with enhanced styling
+    ax.set_xlabel('True Values (%)', fontsize=14, fontweight='bold', labelpad=15)
+    ax.set_ylabel('Relative Percent Error (%)', fontsize=14, fontweight='bold', labelpad=15)
+    ax.set_zlabel('Frequency', fontsize=14, fontweight='bold', labelpad=15)
     
     # Set title
-    ax.set_title('3D Distribution of RPE across True Polarization Values', fontsize=16, fontweight='bold')
+    ax.set_title('3D Distribution of RPE across True Values', fontsize=18, fontweight='bold', pad=20)
     
     # Adjust the view angle for better visualization
     ax.view_init(elev=30, azim=45)
+    
+    # Enhance tick parameters
+    ax.tick_params(axis='x', labelsize=11)
+    ax.tick_params(axis='y', labelsize=11)
+    ax.tick_params(axis='z', labelsize=11)
     
     # Save the 3D histogram
     plt.tight_layout()
@@ -478,8 +617,10 @@ def plot_rpe_and_residuals(y_true, y_pred, performance_dir, version, figsize=(18
     plt.close()
     print(f"3D RPE distribution histogram saved to {plot3d_path}")
     
-    # Alternative 2D heatmap visualization of the same data (often easier to interpret)
-    plt.figure(figsize=(12, 8))
+    ########################################
+    # 9. RPE HEATMAP
+    ########################################
+    plt.figure(figsize=(12, 9))
     
     # Create pivot table for heatmap
     heatmap_data = pd.DataFrame({
@@ -489,8 +630,8 @@ def plot_rpe_and_residuals(y_true, y_pred, performance_dir, version, figsize=(18
     })
     
     # Create bins for True values and RPE
-    true_bins_edges = np.linspace(results_df['True'].min(), results_df['True'].max(), 15)
-    rpe_bins_edges = np.linspace(results_df['RPE'].min(), results_df['RPE'].max(), 15)
+    true_bins_edges = np.linspace(results_df['True'].min(), results_df['True'].max(), 20)
+    rpe_bins_edges = np.linspace(results_df['RPE'].min(), min(results_df['RPE'].max(), rpe_bins_edges[-1] * 2), 20)
     
     # Assign data points to bins
     heatmap_data['True_bin'] = pd.cut(heatmap_data['True'], bins=true_bins_edges, labels=true_bins_edges[:-1])
@@ -505,22 +646,29 @@ def plot_rpe_and_residuals(y_true, y_pred, performance_dir, version, figsize=(18
         fill_value=0
     )
     
-    # Plot heatmap
+    # Plot enhanced heatmap
     sns.heatmap(
         pivot_data, 
         cmap='viridis', 
         annot=False, 
         fmt='d', 
-        linewidths=0,
-        cbar_kws={'label': 'Frequency'}
+        linewidths=0.5,
+        cbar_kws={
+            'label': 'Frequency',
+            'orientation': 'vertical',
+            'shrink': 0.8,
+            'aspect': 20,
+            'pad': 0.05
+        }
     )
     
-    plt.title('Heatmap of RPE Distribution across True Polarization Values', fontsize=16, fontweight='bold')
-    plt.xlabel('True Polarization Values (%)', fontsize=12)
-    plt.ylabel('Relative Percent Error (%)', fontsize=12)
+    plt.title('Heatmap of RPE Distribution across True Values', 
+             fontsize=18, fontweight='bold', pad=15)
+    plt.xlabel('True Values (%)', fontsize=14, fontweight='bold', labelpad=10)
+    plt.ylabel('Relative Percent Error (%)', fontsize=14, fontweight='bold', labelpad=10)
     
     # Adjust tick frequency for readability
-    plt.xticks(rotation=45)
+    plt.xticks(rotation=45, ha='right')
     plt.yticks(rotation=0)
     
     # Save the heatmap
