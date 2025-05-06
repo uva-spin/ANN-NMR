@@ -303,6 +303,9 @@ def plot_enhanced_performance_metrics(y_true, y_pred, performance_dir, version, 
     plt.xlim(min_val - margin, max_val + margin)
     plt.ylim(min_val - margin, max_val + margin)
     
+    plt.xticks(fontsize=16)
+    plt.yticks(fontsize=16)
+    
     plt.tight_layout()
     plot_path = os.path.join(performance_dir, f'{version}_Actual_vs_Predicted.png')
     plt.savefig(plot_path, dpi=dpi, bbox_inches='tight')
@@ -342,6 +345,9 @@ def plot_enhanced_performance_metrics(y_true, y_pred, performance_dir, version, 
     plt.grid(True, linestyle='--', alpha=0.7, color=palette['grid'])
     plt.legend(loc='best', fancybox=True)
     
+    plt.xticks(fontsize=16)
+    plt.yticks(fontsize=16)
+    
     plt.tight_layout()
     plot_path = os.path.join(performance_dir, f'{version}_Residuals_Distribution.png')
     plt.savefig(plot_path, dpi=dpi, bbox_inches='tight')
@@ -371,9 +377,13 @@ def plot_enhanced_performance_metrics(y_true, y_pred, performance_dir, version, 
                alpha=0.2, color=palette['quaternary'], 
                label=f'±1σ: [{rpe_mean-rpe_std:.6f}%, {rpe_mean+rpe_std:.6f}%]')
     
+    
+    plt.xticks(fontsize=16)
+    plt.yticks(fontsize=16)
+    
     plt.title('Relative Percent Error (RPE) Distribution', fontsize=18, pad=15)
-    plt.xlabel('Relative Percent Error (%)', fontsize=14, labelpad=10)
-    plt.ylabel('Density', fontsize=14, labelpad=10)
+    plt.xlabel('Relative Percent Error (%)', fontsize=16, labelpad=10)
+    plt.ylabel('Density', fontsize=16, labelpad=10)
     plt.grid(True, linestyle='--', alpha=0.7, color=palette['grid'])
     plt.legend(loc='best', fancybox=True)
     
@@ -405,6 +415,9 @@ def plot_enhanced_performance_metrics(y_true, y_pred, performance_dir, version, 
     plt.ylabel('Residuals', fontsize=14, labelpad=10)
     plt.grid(True, linestyle='--', alpha=0.7, color=palette['grid'])
     
+    plt.xticks(fontsize=16)
+    plt.yticks(fontsize=16)
+    
     plt.tight_layout()
     plot_path = os.path.join(performance_dir, f'{version}_Residuals_vs_True.png')
     plt.savefig(plot_path, dpi=dpi, bbox_inches='tight')
@@ -435,6 +448,9 @@ def plot_enhanced_performance_metrics(y_true, y_pred, performance_dir, version, 
     plt.ylabel('Relative Percent Error (%)', fontsize=14, labelpad=10)
     plt.grid(True, linestyle='--', alpha=0.7, color=palette['grid'])
     plt.legend(loc='best', fancybox=True)
+    
+    plt.xticks(fontsize=16)
+    plt.yticks(fontsize=16)
     
     plt.tight_layout()
     plot_path = os.path.join(performance_dir, f'{version}_RPE_vs_True.png')
@@ -479,6 +495,9 @@ def plot_enhanced_performance_metrics(y_true, y_pred, performance_dir, version, 
     plt.xlabel('Value', fontsize=14, labelpad=10)
     plt.grid(True, linestyle='--', alpha=0.7, color=palette['grid'], axis='x')
     plt.gca().invert_yaxis()  # Invert y-axis for better readability
+    
+    plt.xticks(fontsize=16)
+    plt.yticks(fontsize=16)
     
     plt.tight_layout()
     plot_path = os.path.join(performance_dir, f'{version}_Error_Metrics_Summary.png')
@@ -548,6 +567,9 @@ def plot_enhanced_performance_metrics(y_true, y_pred, performance_dir, version, 
     plt.grid(True, linestyle='--', alpha=0.7, color=palette['grid'])
     plt.legend(loc='best', fancybox=True)
     
+    plt.xticks(fontsize=16)
+    plt.yticks(fontsize=16)
+    
     plt.tight_layout()
     focused_path = os.path.join(performance_dir, f'{version}_Focused_PE_Histogram.png')
     plt.savefig(focused_path, dpi=dpi, bbox_inches='tight')
@@ -610,6 +632,9 @@ def plot_enhanced_performance_metrics(y_true, y_pred, performance_dir, version, 
     ax.tick_params(axis='y', labelsize=11)
     ax.tick_params(axis='z', labelsize=11)
     
+    plt.xticks(fontsize=16)
+    plt.yticks(fontsize=16)
+    
     # Save the 3D histogram
     plt.tight_layout()
     plot3d_path = os.path.join(performance_dir, f'{version}_3D_RPE_Distribution.png')
@@ -631,7 +656,10 @@ def plot_enhanced_performance_metrics(y_true, y_pred, performance_dir, version, 
     
     # Create bins for True values and RPE
     true_bins_edges = np.linspace(results_df['True'].min(), results_df['True'].max(), 20)
-    rpe_bins_edges = np.linspace(results_df['RPE'].min(), min(results_df['RPE'].max(), rpe_bins_edges[-1] * 2), 20)
+    
+    rpe_min = results_df['RPE'].min()
+    rpe_max = results_df['RPE'].max()
+    rpe_bins_edges = np.linspace(rpe_min, rpe_max, 20)
     
     # Assign data points to bins
     heatmap_data['True_bin'] = pd.cut(heatmap_data['True'], bins=true_bins_edges, labels=true_bins_edges[:-1])

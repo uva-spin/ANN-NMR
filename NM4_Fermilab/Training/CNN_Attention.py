@@ -212,6 +212,12 @@ if __name__ == "__main__":
         loss_weights={'classifier': 0.2, 'P_output': 1.0},
         metrics={'P_output': 'mae'}
     )
+    
+    # Defining the log file for loss info     
+    final_log_file = f"{performance_dir}/training_log_final_model.csv"
+    csv_logger = tf.keras.callbacks.CSVLogger(final_log_file, append=True, separator=',')
+
+
 
     history = model.fit(
         X_train, {'classifier': y_class, 'P_output': y_reg},
@@ -223,7 +229,8 @@ if __name__ == "__main__":
             patience=20, 
             restore_best_weights=True,
             mode='min'
-        )],
+        ),
+        csv_logger],
         verbose=1
     )
 
@@ -233,7 +240,7 @@ if __name__ == "__main__":
     y_test_flat = y_test.flatten()
     y_pred_flat = y_pred.flatten()
 
-    plot_rpe_and_residuals(y_test_flat, y_pred_flat, performance_dir, version)
+    plot_enhanced_performance_metrics(y_test_flat, y_pred_flat, performance_dir, version)
     plot_enhanced_results(y_test_flat, y_pred_flat, performance_dir, version)
     plot_training_history(history, performance_dir, version)
 

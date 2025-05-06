@@ -12,7 +12,7 @@ class SignalGenerator:
     A class for generating signal training data for deuteron or proton experiments.
     
     This class generates synthetic training data that combines baseline signals with either 
-    deuteron or proton signals, adds optional noise, and saves the results to CSV files.
+    deuteron or proton signals, adds optional noise, and saves the results to Parquet files.
     It is designed to be called from a SLURM batch job for efficient generation of large datasets.
     """
     
@@ -41,7 +41,7 @@ class SignalGenerator:
         mode : str
             Experiment type: "deuteron" or "proton"
         output_dir : str
-            Directory to save output CSV files
+            Directory to save output Parquet files
         num_samples : int
             Number of signal samples to generate
         add_noise : bool
@@ -156,7 +156,7 @@ class SignalGenerator:
     
     def generate_samples(self, job_id=None):
         """
-        Generate signal samples and save them to a CSV file.
+        Generate signal samples and save them to a Parquet file.
         
         Parameters:
         -----------
@@ -166,7 +166,7 @@ class SignalGenerator:
         Returns:
         --------
         str
-            Path to the saved CSV file
+            Path to the saved Parquet file
         """
         signal_arr = []
         snr_arr = []
@@ -208,7 +208,7 @@ class SignalGenerator:
             if self.mode == "deuteron":
                 signal = self._generate_deuteron_signal(Ps)
             else:  # proton mode
-                signal = self._generate_proton_signal(x)
+                signal, _ = self._generate_proton_signal(x)
                 
             # Add baseline and noise
             noisy_signal, clean_signal, noise = self._add_baseline_and_noise(signal, x)
@@ -234,17 +234,18 @@ class SignalGenerator:
         filename = 'Sample'
         if job_id is not None:
             filename += f"_{job_id}"
-        filename += ".csv"
+        filename += ".parquet"  # Changed from .csv to .parquet
         
         file_path = os.path.join(self.output_dir, filename)
         
-        # Saving Dataframe
+        # Saving Dataframe as Parquet
         try:
-            df.to_csv(file_path, index=False)
-            self.logger.info(f"CSV file saved successfully to {file_path}")
+            # Save as Parquet file with compression
+            df.to_parquet(file_path, engine='pyarrow', compression='snappy')
+            self.logger.info(f"Parquet file saved successfully to {file_path}")
             return file_path
         except Exception as e:
-            self.logger.error(f"Error saving CSV file: {e}")
+            self.logger.error(f"Error saving Parquet file: {e}")
             raise
 
 def parse_args():
@@ -283,7 +284,7 @@ def parse_args():
     parser.add_argument('--noise_level', type=float, default=0.000002, 
                         help='Standard deviation of Gaussian noise')
     parser.add_argument('--output_dir', default='Training_Data', 
-                        help='Directory to save output CSV files')
+                        help='Directory to save output Parquet files')
     parser.add_argument('--bound', type=float, default=0.08, 
                         help='Bound of the shift')
     return parser.parse_args()

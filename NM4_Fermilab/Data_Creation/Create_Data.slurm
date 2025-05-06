@@ -12,7 +12,7 @@
 # Set these variables to configure the job
 PROJECT_DIR="..."  ### Change this to your own directory
 OUTPUT_DIR="${PROJECT_DIR}/Test"
-OUTPUT_FILENAME="Deuteron_1_60_With_Noise_500K.csv"  # Global variable for output filename
+OUTPUT_FILENAME="Deuteron_1_60_With_Noise_500K.parquet"  # Global variable for output filename
 MODE="deuteron"                       # Options: deuteron, proton
 NUM_SAMPLES=10                      # Number of samples per task ### TOTAL NUMBER OF SAMPLES = NUM_SAMPLES * SLURM_ARRAY_TASK_MAX
 ADD_NOISE=1                           # 0=no noise, 1=add noise
@@ -62,6 +62,7 @@ module load apptainer tensorflow/2.17.0
 echo "TensorFlow module loaded"
 
 mkdir -p ${OUTPUT_DIR}
+chmod 755 ${OUTPUT_DIR}
 echo "Output directory created: ${OUTPUT_DIR}"
 
 
@@ -177,27 +178,27 @@ print(f"Contents of {output_dir}:")
 for f in glob.glob('*'):
     print(f"  {f}")
 
-extension = 'csv'
+extension = 'parquet'
 all_filenames = [i for i in glob.glob('*.{}'.format(extension))]
-print(f"Found {len(all_filenames)} CSV files to combine")
+print(f"Found {len(all_filenames)} Parquet files to combine")
 
 if not all_filenames:
-    print("ERROR: No CSV files found. Exiting.")
+    print("ERROR: No Parquet files found. Exiting.")
     sys.exit(1)
 
-# Load and combine all CSV files
+# Load and combine all Parquet files
 print("Loading and combining files...")
-combined_csv = pd.concat([pd.read_csv(f) for f in all_filenames])
+combined_csv = pd.concat([pd.read_parquet(f) for f in all_filenames])
 
 # Save the combined data
 print(f"Saving combined data to {output_filename}...")
-combined_csv.to_csv(output_filename, index=False)
+combined_csv.to_parquet(output_filename, engine='pyarrow', compression='fastparquet')
 
 print(f"Successfully combined {len(all_filenames)} files into {output_filename}")
 print(f"Total samples: {len(combined_csv):,}")
 EOF
 
-# ===== Part 3: Combine CSV Files (only run by the last array job) =====
+# ===== Part 3: Combine Parquet Files (only run by the last array job) =====
 # We'll use a job dependency to trigger this after all array jobs finish
 echo "Checking if this is the last array job..."
 if [ "${SLURM_ARRAY_TASK_ID}" -eq "${SLURM_ARRAY_TASK_MAX}" ]; then
@@ -208,7 +209,7 @@ if [ "${SLURM_ARRAY_TASK_ID}" -eq "${SLURM_ARRAY_TASK_MAX}" ]; then
     cat > ${MERGE_SCRIPT} << EOF
 #!/usr/bin/env bash
 #SBATCH -p standard
-#SBATCH --job-name=merge_csv
+#SBATCH --job-name=merge_parquet
 #SBATCH --output=job_logs/merge_%j.out  # Redirect output to job_logs subdirectory
 #SBATCH --error=job_logs/merge_%j.err   # Redirect error to job_logs subdirectory
 #SBATCH -c 16
