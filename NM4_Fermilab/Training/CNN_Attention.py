@@ -22,6 +22,16 @@ random.seed(42)
 np.random.seed(42)
 tf.random.set_seed(42)
 
+
+physical_devices = tf.config.list_physical_devices('GPU')
+if physical_devices:
+    for device in physical_devices:
+        tf.config.experimental.set_memory_growth(device, True)
+    print(f"Memory growth enabled on {len(physical_devices)} GPU(s)")
+else:
+    print("No GPU devices found, running on CPU"
+
+
 data_path = find_file("Deuteron_TE_60_Noisy_Shifted.parquet")  
 version = 'Deuteron_TE_60_Noisy_Shifted_1M_CNN_Attention_Optuna_V1'  
 performance_dir = f"Model_Performance/{version}"  
