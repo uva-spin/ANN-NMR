@@ -22,8 +22,8 @@ random.seed(42)
 np.random.seed(42)
 tf.random.set_seed(42)
 
-data_path = find_file("Deuteron_05_60_No_Noise_1M.parquet")  
-version = 'Deuteron_05_60_No_Noise_1M_CNN_Attention_Optuna_V1'  
+data_path = find_file("Deuteron_TE_60_Noisy_Shifted.parquet")  
+version = 'Deuteron_TE_60_Noisy_Shifted_1M_CNN_Attention_Optuna_V1'  
 performance_dir = f"Model_Performance/{version}"  
 model_dir = f"Models/{version}"  
 os.makedirs(performance_dir, exist_ok=True)
@@ -34,6 +34,9 @@ try:
     print("Data loaded successfully from Parquet file!")
 except Exception as e:
     print(f"Error loading data: {e}")
+    
+data = data.sample(frac=1, random_state=42).reset_index(drop=True)
+
 
 train_data, temp_data = train_test_split(data, test_size=0.3, random_state=42)
 val_data, test_data = train_test_split(temp_data, test_size=1/3, random_state=42)
@@ -44,6 +47,8 @@ X_val = val_data.drop(columns=["P", 'SNR']).astype('float64').values
 y_val = val_data["P"].astype('float64').values * 100
 X_test = test_data.drop(columns=["P", 'SNR']).astype('float64').values
 y_test = test_data["P"].astype('float64').values * 100
+snr_test = test_data["SNR"].values if "SNR" in test_data.columns else None
+
 
 scaler = StandardScaler()
 
@@ -112,13 +117,13 @@ def objective(trial):
         'reg_units': trial.suggest_categorical('reg_units', [16, 32, 64, 128]),
         'temperature': trial.suggest_float('temperature', 1.0, 5.0),
         'learning_rate': trial.suggest_loguniform('learning_rate', 1e-5, 1e-2),
-        'batch_size': trial.suggest_categorical('batch_size', [16, 32, 64, 128]),
+        'batch_size': trial.suggest_categorical('batch_size', [32, 64, 128, 256]),
         'num_residual_blocks': trial.suggest_int('num_residual_blocks', 1, 5),
         'epochs': 50,
     }
 
     model = build_model(params)
-    y_class = (y_train < 10.0).astype(int)
+    y_class = (y_train < 1.0).astype(int)
     y_reg = y_train.astype('float32')
 
     # Add cosine decay learning rate schedule
@@ -146,7 +151,7 @@ def objective(trial):
 
     history = model.fit(
         X_train, {'classifier': y_class, 'P_output': y_reg},
-        validation_data=(X_val, {'classifier': (y_val < 10.0).astype(int), 'P_output': y_val}),
+        validation_data=(X_val, {'classifier': (y_val < 1.0).astype(int), 'P_output': y_val}),
         epochs=params['epochs'],
         batch_size=params['batch_size'],
         callbacks=[early_stopping, TFKerasPruningCallback(trial, 'val_P_output_mae')],
@@ -195,7 +200,7 @@ if __name__ == "__main__":
     best_params = trial.params
     best_params['epochs'] = 100
     model = build_model(best_params)
-    y_class = (y_train < 10.0).astype(int)
+    y_class = (y_train < 1.0).astype(int)
     y_reg = y_train.astype('float32')
 
     initial_learning_rate = best_params['learning_rate']
@@ -221,7 +226,7 @@ if __name__ == "__main__":
 
     history = model.fit(
         X_train, {'classifier': y_class, 'P_output': y_reg},
-        validation_data=(X_val, {'classifier': (y_val < 10.0).astype(int), 'P_output': y_val}),
+        validation_data=(X_val, {'classifier': (y_val < 1.0).astype(int), 'P_output': y_val}),
         epochs=best_params['epochs'],
         batch_size=best_params['batch_size'],
         callbacks=[tf.keras.callbacks.EarlyStopping(
@@ -240,7 +245,7 @@ if __name__ == "__main__":
     y_test_flat = y_test.flatten()
     y_pred_flat = y_pred.flatten()
 
-    plot_enhanced_performance_metrics(y_test_flat, y_pred_flat, performance_dir, version)
+    plot_enhanced_performance_metrics(y_test_flat, y_pred_flat, snr_test, performance_dir, version)
     plot_enhanced_results(y_test_flat, y_pred_flat, performance_dir, version)
     plot_training_history(history, performance_dir, version)
 

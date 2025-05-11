@@ -580,13 +580,6 @@ def GenerateLineshape(P,x):
     signal = Iplus + Iminus
     return signal,Iplus,Iminus
 
-
-# def Lineshape(P,x):
-    
-#     omega_d = 2*np.pi * 16.0 * 1e6 # MHz
-#     ### Go from R to frequency R = (omega - omega_d)/(3*omega_q)
-#     x = (3*omega_q*x + omega_d)
-#     def rho_squared(x):
         
 
 def Sampling_Lineshape(P, x, bound):

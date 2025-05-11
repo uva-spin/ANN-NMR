@@ -155,7 +155,7 @@ def plot_training_history(history, performance_dir, version, figsize=(14, 8), dp
     plt.close(fig)
     print(f"Training history plot saved to {plot_path}")
     
-def plot_enhanced_performance_metrics(y_true, y_pred, performance_dir, version, dpi=600):
+def plot_enhanced_performance_metrics(y_true, y_pred, snr_test, performance_dir, version, dpi=600):
     """
     Creates individual, aesthetically enhanced plots for model performance evaluation:
     - Actual vs Predicted plot
@@ -208,7 +208,8 @@ def plot_enhanced_performance_metrics(y_true, y_pred, performance_dir, version, 
         'Predicted': y_pred,
         'Residuals': residuals,
         'Percentage_Error': percentage_error,
-        'RPE': rpe
+        'RPE': rpe,
+        'SNR': snr_test
     })
     
     # Handle infinities and NaNs
