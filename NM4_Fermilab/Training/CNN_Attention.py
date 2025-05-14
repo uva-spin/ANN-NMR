@@ -29,7 +29,7 @@ if physical_devices:
         tf.config.experimental.set_memory_growth(device, True)
     print(f"Memory growth enabled on {len(physical_devices)} GPU(s)")
 else:
-    print("No GPU devices found, running on CPU"
+    print("No GPU devices found, running on CPU")
 
 
 data_path = find_file("Deuteron_TE_60_Noisy_Shifted.parquet")  
@@ -127,7 +127,7 @@ def objective(trial):
         'reg_units': trial.suggest_categorical('reg_units', [16, 32, 64, 128]),
         'temperature': trial.suggest_float('temperature', 1.0, 5.0),
         'learning_rate': trial.suggest_loguniform('learning_rate', 1e-5, 1e-2),
-        'batch_size': trial.suggest_categorical('batch_size', [32, 64, 128, 256]),
+        'batch_size': trial.suggest_categorical('batch_size', [64, 128, 256, 512]),
         'num_residual_blocks': trial.suggest_int('num_residual_blocks', 1, 5),
         'epochs': 50,
     }
