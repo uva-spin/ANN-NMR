@@ -1,0 +1,25 @@
+Model Evaluation Metrics - Deuteron_TE_60_Noisy_Shifted_100K_CNN_Attention_Fixed_V3
+==================================================
+
+Basic Error Metrics:
+MAE: 1.00972331
+RMSE: 1.82417119
+Max Absolute Error: 12.65536308
+R²: 0.98563952
+
+Relative Error Metrics:
+Median RPE: 0.18313%
+Mean RPE: 3.46890%
+90th Percentile RPE: 0.95559%
+95th Percentile RPE: 0.99237%
+99th Percentile RPE: 108.28019%
+
+Threshold Metrics:
+% within 0.0001 abs error: 0.1276%
+% within 0.001 abs error: 1.3332%
+% within 0.01 abs error: 18.6751%
+% within 0.1 abs error: 48.9689%
+% within 0.01% rel error: 5.9369%
+% within 0.1% rel error: 35.0042%
+% within 1% rel error: 95.8260%
+% within 5% rel error: 96.7634%
