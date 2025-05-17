@@ -22,22 +22,26 @@ random.seed(42)
 np.random.seed(42)
 tf.random.set_seed(42)
 
+tf.config.optimizer.set_jit(True)
+os.environ['TF_XLA_FLAGS'] = '--tf_xla_auto_jit=2 --tf_xla_cpu_global_jit'
 
 physical_devices = tf.config.list_physical_devices('GPU')
-if physical_devices:
+try:
     for device in physical_devices:
         tf.config.experimental.set_memory_growth(device, True)
-    print(f"Memory growth enabled on {len(physical_devices)} GPU(s)")
-else:
-    print("No GPU devices found, running on CPU"
+except:
+    print("Memory growth setting failed")
 
 
-data_path = find_file("Deuteron_TE_60_Noisy_Shifted.parquet")  
-version = 'Deuteron_TE_60_Noisy_Shifted_1M_CNN_Attention_Optuna_V1'  
+data_path = find_file("Deuteron_TE_60_Noisy_Shifted_100K.parquet")  
+version = 'Deuteron_TE_60_Noisy_Shifted_100K_CNN_Attention_Separate_Models_V1'  
 performance_dir = f"Model_Performance/{version}"  
 model_dir = f"Models/{version}"  
 os.makedirs(performance_dir, exist_ok=True)
 os.makedirs(model_dir, exist_ok=True)
+
+# Define the polarization threshold for classification
+P_THRESHOLD = 1.0
 
 try:
     data = pd.read_parquet(data_path, engine='pyarrow')
@@ -70,105 +74,242 @@ y_train = y_train.reshape(-1, 1)
 y_val = y_val.reshape(-1, 1)
 y_test = y_test.reshape(-1, 1)
 
+# Create classification targets
+y_train_class = (y_train < P_THRESHOLD).astype(int)
+y_val_class = (y_val < P_THRESHOLD).astype(int)
+y_test_class = (y_test < P_THRESHOLD).astype(int)
+
+# Split regression data based on threshold
+X_train_low = X_train[y_train_class.flatten() == 1]
+y_train_low = y_train[y_train_class.flatten() == 1]
+X_train_high = X_train[y_train_class.flatten() == 0]
+y_train_high = y_train[y_train_class.flatten() == 0]
+
+X_val_low = X_val[y_val_class.flatten() == 1]
+y_val_low = y_val[y_val_class.flatten() == 1]
+X_val_high = X_val[y_val_class.flatten() == 0]
+y_val_high = y_val[y_val_class.flatten() == 0]
+
 
 def multi_scale_conv_block(x, filters):
     conv3 = layers.Conv1D(filters, 3, padding='same', activation='relu')(x)
     conv5 = layers.Conv1D(filters, 5, padding='same', activation='relu')(x)
     conv7 = layers.Conv1D(filters, 7, padding='same', activation='relu')(x)
     concat = layers.Concatenate()([conv3, conv5, conv7])
-    # concat = layers.BatchNormalization()(concat)
+    concat = layers.BatchNormalization()(concat)
     return concat
 
 def attention_block(x):
-    squeeze = layers.GlobalAveragePooling1D()(x)
-    excitation = layers.Dense(x.shape[-1] // 2, activation='relu')(squeeze)
-    excitation = layers.Dense(x.shape[-1], activation='sigmoid')(excitation)
-    excitation = layers.Reshape((1, x.shape[-1]))(excitation)
-    # excitation = layers.BatchNormalization()(excitation)
-    return layers.Multiply()([x, excitation])
+    # Enhanced attention mechanism with multi-head attention
+    # For channel attention
+    channel_avg_pool = layers.GlobalAveragePooling1D()(x)
+    channel_max_pool = layers.GlobalMaxPooling1D()(x)
+    
+    shared_dense1 = layers.Dense(x.shape[-1] // 4, activation='relu')
+    shared_dense2 = layers.Dense(x.shape[-1], activation='sigmoid')
+    
+    channel_avg_excitation = shared_dense1(channel_avg_pool)
+    channel_avg_excitation = shared_dense2(channel_avg_excitation)
+    
+    channel_max_excitation = shared_dense1(channel_max_pool)
+    channel_max_excitation = shared_dense2(channel_max_excitation)
+    
+    channel_excitation = layers.Add()([channel_avg_excitation, channel_max_excitation])
+    channel_excitation = layers.Reshape((1, x.shape[-1]))(channel_excitation)
+    
+    # Apply attention
+    attended = layers.Multiply()([x, channel_excitation])
+    attended = layers.LayerNormalization()(attended)
+    
+    return attended
 
-def residual_block(x, filters):
+def residual_block(x, filters, dilation_rate=1):
     shortcut = x
-    conv = layers.Conv1D(filters, 3, padding='same', activation='relu')(x)
-    conv = layers.Conv1D(filters, 3, padding='same')(conv)
+    
+    # Add normalization before activation (pre-activation pattern)
+    x = layers.LayerNormalization()(x)
+    
+    # Use dilated convolutions for capturing long-range dependencies
+    conv = layers.Conv1D(filters, 3, padding='same', activation='relu', dilation_rate=dilation_rate)(x)
     conv = layers.LayerNormalization()(conv)
+    conv = layers.Conv1D(filters, 3, padding='same', dilation_rate=dilation_rate)(conv)
+    
+    # Add dropout for regularization
+    conv = layers.SpatialDropout1D(0.1)(conv)
+    
+    # Add shortcut connection
     return layers.Add()([shortcut, conv])
 
-def build_model(params, input_shape=(500, 1)):
+def build_feature_extractor(params, input_shape=(500, 1)):
     inputs = Input(shape=input_shape)
-    x = multi_scale_conv_block(inputs, params['filters'])
     
-    for _ in range(params['num_residual_blocks']):
-        x = residual_block(x, x.shape[-1])
+    # Add explicit data type for higher precision
+    inputs_cast = layers.Lambda(lambda x: tf.cast(x, tf.float64))(inputs)
     
+    # Use more filters for initial feature extraction
+    x = multi_scale_conv_block(inputs_cast, params['filters'])
+    
+    # Add more residual blocks with different dilation rates for better feature extraction
+    for i in range(params['num_residual_blocks']):
+        dilation_rate = 2**(i % 3)  # Exponential dilation rates: 1, 2, 4, 1, 2, 4...
+        x = residual_block(x, x.shape[-1], dilation_rate=dilation_rate)
+    
+    # Add an additional attention mechanism for frequency importance
     x = attention_block(x)
-    x = layers.GlobalAveragePooling1D()(x)
+    
+    # Add a second attention block for refined feature importance
+    x = attention_block(x)
+    
+    # Global pooling with additional context
+    max_pool = layers.GlobalMaxPooling1D()(x)
+    avg_pool = layers.GlobalAveragePooling1D()(x)
+    x = layers.Concatenate()([max_pool, avg_pool])
+    
+    return inputs, x
 
-    classifier = layers.Dense(params['classifier_units'], activation='relu')(x)
-    is_low_P = layers.Dense(1, activation='sigmoid')(classifier)
-    temperature = params['temperature']
-    is_low_P = layers.Activation(lambda z: tf.sigmoid(z * temperature), name='classifier')(is_low_P)
-
-    low_reg = layers.Dense(params['reg_units'], activation='relu')(x)
-    low_reg = layers.Dense(1, name='reg_low')(low_reg)
-
-    high_reg = layers.Dense(params['reg_units'], activation='relu')(x)
-    high_reg = layers.Dense(1, name='reg_high')(high_reg)
-
-    output = layers.Lambda(lambda tensors: tensors[0] * tensors[1] + (1 - tensors[0]) * tensors[2], name='P_output')([is_low_P, low_reg, high_reg])
-
-    model = models.Model(inputs=inputs, outputs=[is_low_P, output])
+def build_classifier_model(params, input_shape=(500, 1)):
+    inputs, x = build_feature_extractor(params, input_shape)
+    
+    x = layers.Dense(params['classifier_units'], activation='relu')(x)
+    x = layers.Dense(1, activation='sigmoid', name='classifier')(x)
+    
+    model = models.Model(inputs=inputs, outputs=x)
     return model
+
+def build_regression_model(params, name_suffix, input_shape=(500, 1)):
+    inputs, x = build_feature_extractor(params, input_shape)
+    
+    # Add more dense layers with higher precision for regression
+    x = layers.Dense(params['reg_units'], activation='relu')(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.Dense(params['reg_units'] // 2, activation='relu')(x)
+    x = layers.BatchNormalization()(x)
+    
+    # Final layer with higher precision for better decimal accuracy
+    x = layers.Dense(1, name=f'P_output_{name_suffix}', dtype='float64')(x)
+    
+    model = models.Model(inputs=inputs, outputs=x)
+    return model
+
+def create_dataset(X, y, batch_size, shuffle=True):
+    X = tf.cast(X, tf.float32)
+    y = tf.cast(y, tf.float32)
+    
+    # Create dataset
+    dataset = tf.data.Dataset.from_tensor_slices((X, y))
+    
+    if shuffle:
+        dataset = dataset.shuffle(buffer_size=len(X))
+    
+    # Batch and prefetch
+    dataset = dataset.batch(batch_size)
+    dataset = dataset.prefetch(tf.data.AUTOTUNE)
+    
+    return dataset
 
 def objective(trial):
     params = {
-        'filters': trial.suggest_categorical('filters', [16, 32, 64, 128]),
-        'classifier_units': trial.suggest_categorical('classifier_units', [8, 16, 32, 64]),
-        'reg_units': trial.suggest_categorical('reg_units', [16, 32, 64, 128]),
-        'temperature': trial.suggest_float('temperature', 1.0, 5.0),
-        'learning_rate': trial.suggest_loguniform('learning_rate', 1e-5, 1e-2),
-        'batch_size': trial.suggest_categorical('batch_size', [32, 64, 128, 256]),
-        'num_residual_blocks': trial.suggest_int('num_residual_blocks', 1, 5),
-        'epochs': 50,
+        'filters': trial.suggest_categorical('filters', [16, 32, 64]),  # Increased filter options
+        'classifier_units': trial.suggest_categorical('classifier_units', [32, 64, 128, 256, 512]),  # Increased units
+        'reg_units': trial.suggest_categorical('reg_units', [64, 128, 256, 512]),  # Increased units
+        'learning_rate': trial.suggest_loguniform('learning_rate', 1e-6, 1e-3),  # Lower learning rate range
+        'batch_size': trial.suggest_categorical('batch_size', [256, 512, 1024,2048]),
+        'num_residual_blocks': trial.suggest_int('num_residual_blocks', 3, 6),  # More residual blocks
+        'epochs': 200,  # Increased epochs
     }
 
-    model = build_model(params)
-    y_class = (y_train < 1.0).astype(int)
-    y_reg = y_train.astype('float32')
+    # Build and train classifier model
+    classifier_model = build_classifier_model(params)
+    train_dataset_class = create_dataset(X_train, y_train_class, params['batch_size'])
+    val_dataset_class = create_dataset(X_val, y_val_class, params['batch_size'], shuffle=False)
 
-    # Add cosine decay learning rate schedule
+    # More sophisticated learning rate schedule
     initial_learning_rate = params['learning_rate']
     decay_steps = params['epochs'] * (len(X_train) // params['batch_size'])
-    cosine_decay = tf.keras.optimizers.schedules.CosineDecay(
+    lr_schedule = tf.keras.optimizers.schedules.CosineDecayRestarts(
         initial_learning_rate=initial_learning_rate,
-        decay_steps=decay_steps,
-        alpha=0.0  # Final learning rate value as a fraction of initial_learning_rate
+        first_decay_steps=decay_steps // 5,
+        t_mul=2.0,
+        m_mul=0.9,
+        alpha=0.01
     )
 
-    model.compile(
-        optimizer=tf.keras.optimizers.Adam(learning_rate=cosine_decay),
-        loss={'classifier': 'binary_crossentropy', 'P_output': 'mse'},
-        loss_weights={'classifier': 0.2, 'P_output': 1.0},
-        metrics={'P_output': 'mae'}
+    classifier_model.compile(
+        optimizer=tf.keras.optimizers.Adam(learning_rate=lr_schedule, epsilon=1e-8),
+        loss='binary_crossentropy',
+        metrics=['accuracy']
     )
 
+    # Improved callbacks
     early_stopping = tf.keras.callbacks.EarlyStopping(
-        monitor='val_P_output_mae', 
-        patience=10, 
+        monitor='val_accuracy', 
+        patience=20,  # Increased patience
         restore_best_weights=True,
-        mode='min'
+        mode='max'
     )
 
-    history = model.fit(
-        X_train, {'classifier': y_class, 'P_output': y_reg},
-        validation_data=(X_val, {'classifier': (y_val < 1.0).astype(int), 'P_output': y_val}),
+    # Build regression models with custom loss functions
+    reg_model_low = build_regression_model(params, "low")
+    reg_model_high = build_regression_model(params, "high")
+    
+    # Create datasets
+    train_dataset_low = create_dataset(X_train_low, y_train_low, params['batch_size'])
+    val_dataset_low = create_dataset(X_val_low, y_val_low, params['batch_size'], shuffle=False)
+    
+    train_dataset_high = create_dataset(X_train_high, y_train_high, params['batch_size'])
+    val_dataset_high = create_dataset(X_val_high, y_val_high, params['batch_size'], shuffle=False)
+    
+    # Use specialized loss functions for better precision
+    reg_model_low.compile(
+        optimizer=tf.keras.optimizers.Adam(learning_rate=lr_schedule, epsilon=1e-8),
+        loss=log_cosh_precision_loss,  # Custom loss for better small value precision
+        metrics=['mae', scaled_mse]  # Additional metrics
+    )
+    
+    reg_model_high.compile(
+        optimizer=tf.keras.optimizers.Adam(learning_rate=lr_schedule, epsilon=1e-8),
+        loss=adaptive_weighted_huber_loss,  # Custom loss for high values
+        metrics=['mae', scaled_mse]  # Additional metrics
+    )
+
+    # Train classifier
+    classifier_history = classifier_model.fit(
+        train_dataset_class,
+        validation_data=val_dataset_class,
         epochs=params['epochs'],
-        batch_size=params['batch_size'],
-        callbacks=[early_stopping, TFKerasPruningCallback(trial, 'val_P_output_mae')],
-        verbose=0
+        callbacks=[early_stopping],
+        verbose=1
+    )
+    
+    # Train low region model
+    low_reg_history = reg_model_low.fit(
+        train_dataset_low,
+        validation_data=val_dataset_low,
+        epochs=params['epochs'],
+        callbacks=[early_stopping],
+        verbose=1
+    )
+    
+    # Train high region model
+    high_reg_history = reg_model_high.fit(
+        train_dataset_high,
+        validation_data=val_dataset_high,
+        epochs=params['epochs'],
+        callbacks=[early_stopping],
+        verbose=1
     )
 
-    val_mae = min(history.history['val_P_output_mae'])
+    # Get validation predictions for evaluation
+    val_class_pred = classifier_model.predict(X_val, verbose=1)
+    val_pred_low = reg_model_low.predict(X_val, verbose=1)
+    val_pred_high = reg_model_high.predict(X_val, verbose=1)
+    
+    # Combine predictions based on classifier output
+    val_pred = np.where(val_class_pred > 0.5, val_pred_low, val_pred_high)
+    
+    # Calculate validation MAE
+    val_mae = np.mean(np.abs(val_pred - y_val))
+    
     return val_mae
 
 if __name__ == "__main__":
@@ -194,7 +335,7 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Error creating study: {e}")
     
-    study.optimize(objective, n_trials=100) 
+    study.optimize(objective, n_trials=10) 
 
     print("Best trial:")
     trial = study.best_trial
@@ -207,57 +348,210 @@ if __name__ == "__main__":
         import json
         json.dump(trial.params, f, indent=4)
 
+    # Get best hyperparameters
     best_params = trial.params
-    best_params['epochs'] = 100
-    model = build_model(best_params)
-    y_class = (y_train < 1.0).astype(int)
-    y_reg = y_train.astype('float32')
+    best_params['epochs'] = 200
+    
+    # Build final models
+    classifier_model = build_classifier_model(best_params)
+    reg_model_low = build_regression_model(best_params, "low")
+    reg_model_high = build_regression_model(best_params, "high")
+    
+    # Create datasets for final training
+    train_dataset_class = create_dataset(X_train, y_train_class, best_params['batch_size'])
+    val_dataset_class = create_dataset(X_val, y_val_class, best_params['batch_size'], shuffle=False)
+    
+    train_dataset_low = create_dataset(X_train_low, y_train_low, best_params['batch_size'])
+    val_dataset_low = create_dataset(X_val_low, y_val_low, best_params['batch_size'], shuffle=False)
+    
+    train_dataset_high = create_dataset(X_train_high, y_train_high, best_params['batch_size'])
+    val_dataset_high = create_dataset(X_val_high, y_val_high, best_params['batch_size'], shuffle=False)
 
+    # Configure improved learning rate decay for final models
     initial_learning_rate = best_params['learning_rate']
     decay_steps = best_params['epochs'] * (len(X_train) // best_params['batch_size'])
-    cosine_decay = tf.keras.optimizers.schedules.CosineDecay(
+    lr_schedule = tf.keras.optimizers.schedules.CosineDecayRestarts(
         initial_learning_rate=initial_learning_rate,
-        decay_steps=decay_steps,
-        alpha=0.0
+        first_decay_steps=decay_steps // 5,
+        t_mul=2.0,
+        m_mul=0.9,
+        alpha=0.01
     )
 
-    model.compile(
-        optimizer=tf.keras.optimizers.Adam(learning_rate=cosine_decay),
-        loss={'classifier': 'binary_crossentropy', 'P_output': 'mse'},
-        loss_weights={'classifier': 0.2, 'P_output': 1.0},
-        metrics={'P_output': 'mae'}
+    # Compile models with improved loss functions
+    classifier_model.compile(
+        optimizer=tf.keras.optimizers.Adam(learning_rate=lr_schedule, epsilon=1e-8),
+        loss='binary_crossentropy',
+        metrics=['accuracy']
     )
     
-    # Defining the log file for loss info     
-    final_log_file = f"{performance_dir}/training_log_final_model.csv"
-    csv_logger = tf.keras.callbacks.CSVLogger(final_log_file, append=True, separator=',')
-
-
-
-    history = model.fit(
-        X_train, {'classifier': y_class, 'P_output': y_reg},
-        validation_data=(X_val, {'classifier': (y_val < 1.0).astype(int), 'P_output': y_val}),
+    reg_model_low.compile(
+        optimizer=tf.keras.optimizers.Adam(learning_rate=lr_schedule, epsilon=1e-8),
+        loss=log_cosh_precision_loss,
+        metrics=['mae', scaled_mse, tf.keras.metrics.RootMeanSquaredError()]
+    )
+    
+    reg_model_high.compile(
+        optimizer=tf.keras.optimizers.Adam(learning_rate=lr_schedule, epsilon=1e-8),
+        loss=adaptive_weighted_huber_loss,
+        metrics=['mae', scaled_mse, tf.keras.metrics.RootMeanSquaredError()]
+    )
+    
+    # Create callback for logging
+    classifier_log_file = f"{performance_dir}/training_log_classifier_model.csv"
+    low_reg_log_file = f"{performance_dir}/training_log_low_reg_model.csv"
+    high_reg_log_file = f"{performance_dir}/training_log_high_reg_model.csv"
+    
+    classifier_csv_logger = tf.keras.callbacks.CSVLogger(classifier_log_file, append=True, separator=',')
+    low_reg_csv_logger = tf.keras.callbacks.CSVLogger(low_reg_log_file, append=True, separator=',')
+    high_reg_csv_logger = tf.keras.callbacks.CSVLogger(high_reg_log_file, append=True, separator=',')
+    
+    # Train classifier model
+    print("Training classifier model...")
+    classifier_history = classifier_model.fit(
+        train_dataset_class,
+        validation_data=val_dataset_class,
         epochs=best_params['epochs'],
-        batch_size=best_params['batch_size'],
-        callbacks=[tf.keras.callbacks.EarlyStopping(
-            monitor='val_P_output_mae', 
-            patience=20, 
-            restore_best_weights=True,
-            mode='min'
-        ),
-        csv_logger],
+        callbacks=[
+            tf.keras.callbacks.EarlyStopping(
+                monitor='val_accuracy', 
+                patience=20, 
+                restore_best_weights=True,
+                mode='max'
+            ),
+            classifier_csv_logger
+        ],
+        verbose=1
+    )
+    
+    # Train low region model
+    print("Training low region regression model...")
+    low_reg_history = reg_model_low.fit(
+        train_dataset_low,
+        validation_data=val_dataset_low,
+        epochs=best_params['epochs'],
+        callbacks=[
+            tf.keras.callbacks.EarlyStopping(
+                monitor='val_mae', 
+                patience=20, 
+                restore_best_weights=True,
+                mode='min'
+            ),
+            low_reg_csv_logger
+        ],
+        verbose=1
+    )
+    
+    # Train high region model
+    print("Training high region regression model...")
+    high_reg_history = reg_model_high.fit(
+        train_dataset_high,
+        validation_data=val_dataset_high,
+        epochs=best_params['epochs'],
+        callbacks=[
+            tf.keras.callbacks.EarlyStopping(
+                monitor='val_mae', 
+                patience=20, 
+                restore_best_weights=True,
+                mode='min'
+            ),
+            high_reg_csv_logger
+        ],
         verbose=1
     )
 
-    model.save(f"{model_dir}/best_model.keras")
+    # Save models
+    classifier_model.save(f"{model_dir}/classifier_model.keras")
+    reg_model_low.save(f"{model_dir}/low_reg_model.keras")
+    reg_model_high.save(f"{model_dir}/high_reg_model.keras")
 
-    _, y_pred = model.predict(X_test)
+    # Evaluate on test set
+    print("Evaluating models on test set...")
+    test_class_pred = classifier_model.predict(X_test)
+    test_pred_low = reg_model_low.predict(X_test)
+    test_pred_high = reg_model_high.predict(X_test)
+    
+    # Combine predictions based on classifier output
+    test_pred = np.where(test_class_pred > 0.5, test_pred_low, test_pred_high)
+    
+    # Calculate and print test metrics
+    test_mae = np.mean(np.abs(test_pred - y_test))
+    print(f"Test MAE: {test_mae}")
+    
+    # Flatten for plotting
     y_test_flat = y_test.flatten()
-    y_pred_flat = y_pred.flatten()
+    y_pred_flat = test_pred.flatten()
 
+    # Plot the performance metrics and results
     plot_enhanced_performance_metrics(y_test_flat, y_pred_flat, snr_test, performance_dir, version)
     plot_enhanced_results(y_test_flat, y_pred_flat, performance_dir, version)
-    plot_training_history(history, performance_dir, version)
+    
+    # Create a function to save a figure with training metrics
+    def plot_combined_training_history():
+        fig, axs = plt.subplots(2, 2, figsize=(16, 12))
+        
+        # Plot classifier accuracy
+        axs[0, 0].plot(classifier_history.history['accuracy'])
+        axs[0, 0].plot(classifier_history.history['val_accuracy'])
+        axs[0, 0].set_title('Classifier Model Accuracy')
+        axs[0, 0].set_ylabel('Accuracy')
+        axs[0, 0].set_xlabel('Epoch')
+        axs[0, 0].legend(['train', 'val'], loc='upper left')
+        
+        # Plot classifier loss
+        axs[0, 1].plot(classifier_history.history['loss'])
+        axs[0, 1].plot(classifier_history.history['val_loss'])
+        axs[0, 1].set_title('Classifier Model Loss')
+        axs[0, 1].set_ylabel('Loss')
+        axs[0, 1].set_xlabel('Epoch')
+        axs[0, 1].legend(['train', 'val'], loc='upper left')
+        
+        # Plot regression model MAE
+        axs[1, 0].plot(low_reg_history.history['mae'])
+        axs[1, 0].plot(low_reg_history.history['val_mae'])
+        axs[1, 0].plot(high_reg_history.history['mae'])
+        axs[1, 0].plot(high_reg_history.history['val_mae'])
+        axs[1, 0].set_title('Regression Models MAE')
+        axs[1, 0].set_ylabel('MAE')
+        axs[1, 0].set_xlabel('Epoch')
+        axs[1, 0].legend(['low train', 'low val', 'high train', 'high val'], loc='upper left')
+        
+        # Plot regression model loss
+        axs[1, 1].plot(low_reg_history.history['loss'])
+        axs[1, 1].plot(low_reg_history.history['val_loss'])
+        axs[1, 1].plot(high_reg_history.history['loss'])
+        axs[1, 1].plot(high_reg_history.history['val_loss'])
+        axs[1, 1].set_title('Regression Models Loss')
+        axs[1, 1].set_ylabel('Loss')
+        axs[1, 1].set_xlabel('Epoch')
+        axs[1, 1].legend(['low train', 'low val', 'high train', 'high val'], loc='upper left')
+        
+        plt.tight_layout()
+        plt.savefig(f"{performance_dir}/training_history.png")
+        plt.close()
+    
+    # Plot training history
+    plot_combined_training_history()
+    
+    # Create a confusion matrix for the classifier
+    def plot_classifier_confusion_matrix():
+        from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+        
+        test_class_pred_binary = (test_class_pred > 0.5).astype(int)
+        cm = confusion_matrix(y_test_class, test_class_pred_binary)
+        
+        fig, ax = plt.subplots(figsize=(8, 8))
+        disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=['High P', 'Low P'])
+        disp.plot(ax=ax)
+        plt.title('Classifier Confusion Matrix')
+        plt.savefig(f"{performance_dir}/classifier_confusion_matrix.png")
+        plt.close()
+    
+    # Plot classifier confusion matrix
+    plot_classifier_confusion_matrix()
+    
+    # Print completion message
+    print("Training and evaluation complete. Results saved to:", performance_dir)
 
 
 

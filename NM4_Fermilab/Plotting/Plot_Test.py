@@ -4,10 +4,10 @@ import numpy as np
 import Plot_Script as ps
 
 # Load the CSV file
-df = pd.read_csv('Training/Model Performance/Deuteron_Shifted_low_CNN_Attention_Optuna_V1/Deuteron_Shifted_low_CNN_Attention_Optuna_V1_filtered_results.csv', 
-                 delimiter=',',
-                 names = ['True', 'Predicted', 'Residuals', 'Percentage_Error', 'RPE'],
-                 skiprows=1)
+
+version = 'Deuteron_TE_60_Noisy_Shifted_100K_CNN_Attention_Fixed'
+df = pd.read_csv(f'Model_Performance/{version}/{version}_results.csv', 
+                 delimiter=',')
 
 print("Original data shape:", df.shape)
 
@@ -16,7 +16,7 @@ mean_rpe = df['RPE'].mean()
 std_rpe = df['RPE'].std()
 
 # Define the threshold for outliers (3 standard deviations)
-threshold = 3 * std_rpe
+threshold = 2 * std_rpe
 
 # Filter out outliers
 df_filtered = df[abs(df['RPE'] - mean_rpe) <= threshold]
@@ -28,6 +28,6 @@ print(f"Filtered data shape: {df_filtered.shape}")
 
 # Use the filtered dataframe for plotting
 print(df_filtered.head())
-ps.plot_enhanced_performance_metrics(df_filtered['True'], df_filtered['Predicted'], 
-                                    'Training/Model Performance/Deuteron_Shifted_low_CNN_Attention_Optuna_V1/New_Plots', 
-                                    'Deuteron_CNN_Attention_Optuna_V1_filtered')
+ps.plot_enhanced_performance_metrics(df_filtered['True'], df_filtered['Predicted'], df_filtered['SNR'], 
+                                    f'Model_Performance/{version}/Revised_Plots', 
+                                    version)
