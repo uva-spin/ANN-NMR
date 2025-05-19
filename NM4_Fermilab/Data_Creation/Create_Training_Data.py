@@ -232,7 +232,7 @@ class SignalGenerator:
             P_values = np.random.uniform(self.lower_bound, self.upper_bound, self.num_samples)
         
         for Ps in P_values:
-            self.phi = np.random.uniform(0, 360) ### Randomly sample a phase angle for the tensor polarization
+            self.phi = np.random.uniform(0, 2*np.pi) ### Randomly sample a phase angle for the tensor polarization
             phi_arr.append(self.phi)
             if self.mode == "deuteron":
                 signal = self._generate_deuteron_signal(Ps)
