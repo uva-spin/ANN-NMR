@@ -18,6 +18,7 @@ class SignalGenerator:
     
     def __init__(self, 
                  mode="deuteron",
+                 polarization_type="vector",
                  output_dir="Training_Data", 
                  num_samples=1000,
                  add_noise=0,
@@ -40,6 +41,8 @@ class SignalGenerator:
         -----------
         mode : str
             Experiment type: "deuteron" or "proton"
+        polarization_type : str
+            "vector" or "tensor"
         output_dir : str
             Directory to save output Parquet files
         num_samples : int
@@ -72,6 +75,7 @@ class SignalGenerator:
             Bound of the shift
         """
         self.mode = mode.lower()
+        self.polarization_type = polarization_type.lower()
         self.output_dir = output_dir
         self.num_samples = num_samples
         self.add_noise = add_noise
@@ -89,7 +93,7 @@ class SignalGenerator:
         # Common baseline parameters
         self.U = 2.4283
         self.eta = 1.04e-2
-        self.phi = 6.1319
+        # self.phi = 6.1319
         self.Cstray = 10**(-20)
         self.shift = 0
         self.shifting = shifting
@@ -118,6 +122,10 @@ class SignalGenerator:
     def _generate_proton_signal(self, x):
         """Generate a proton signal using Voigt profile.
         This is still being worked on..."""
+
+        # Work on tensor polarization in future
+
+
         sig = 0.1 + np.random.uniform(-0.009, 0.001)       
         gam = 0.1 + np.random.uniform(-0.009, 0.001)         
         amp = 0.005 + np.random.uniform(-0.005, 0.01)
@@ -126,11 +134,22 @@ class SignalGenerator:
         return Voigt(x, amp, sig, gam, center), None
     
     def _generate_deuteron_signal(self, P):
+        ### Assign Sampling and GenerateLineshape functions based on polarization type
+        if self.polarization_type == "vector":
+            Sampling = SamplingVectorLineshape(P,X,self.bound)
+            GenerateLineshape = GenerateVectorLineshape(P,X)
+        elif self.polarization_type == "tensor":
+            Sampling = SamplingTensorLineshape(P,X,self.bound)
+            GenerateLineshape = GenerateTensorLineshape(P,X, self.phi)
+            ### self.phi here is the shared phase angle for both the QCurve and the Magnetic Susceptibility components. 
+            ### They are both the same and should be iterated over
+        else:
+            raise ValueError(f"Invalid polarization type: {self.polarization_type}. Choose 'vector' or 'tensor'.")
         if self.shifting:
             """Generate a deuteron signal using the Sampling_Lineshape function. Here, we are shifting the signal by a random amount within the bound to 
             capture more information about the lineshape"""
             X = np.linspace(30.88,34.48,500) ### Center point here is ~32.6MHz 
-            signal = Sampling_Lineshape(P, X, self.bound) / 1500.0 ### Scale here needs to be worked on
+            signal = Sampling(P, X, self.bound) / 1500.0 ### Scale here needs to be worked on
             return signal
         else:
             """Generate a deuteron signal using the GenerateLineshape function."""
@@ -170,9 +189,10 @@ class SignalGenerator:
         """
         signal_arr = []
         snr_arr = []
+        phi_arr = []
         
         # Get frequency range based on center frequency
-        # x, _, _ = 
+   
         x = np.linspace(30.88,34.48,500)
         
         self.logger.info(f"Generating {self.num_samples} samples in {self.mode} mode...")
@@ -205,10 +225,14 @@ class SignalGenerator:
             P_values = np.random.uniform(self.lower_bound, self.upper_bound, self.num_samples)
         
         for Ps in P_values:
+            self.phi = np.random.uniform(0, 360) ### Randomly sample a phase angle for the tensor polarization
+            phi_arr.append(self.phi)
             if self.mode == "deuteron":
                 signal = self._generate_deuteron_signal(Ps)
             else:  # proton mode
                 signal, _ = self._generate_proton_signal(x)
+
+            
                 
             # Add baseline and noise
             noisy_signal, clean_signal, noise = self._add_baseline_and_noise(signal, x)
@@ -234,13 +258,12 @@ class SignalGenerator:
         filename = 'Sample'
         if job_id is not None:
             filename += f"_{job_id}"
-        filename += ".parquet"  # Changed from .csv to .parquet
+        filename += ".parquet"
         
         file_path = os.path.join(self.output_dir, filename)
         
         # Saving Dataframe as Parquet
         try:
-            # Save as Parquet file with compression
             df.to_parquet(file_path, engine='pyarrow', compression='snappy')
             self.logger.info(f"Parquet file saved successfully to {file_path}")
             return file_path
@@ -254,9 +277,9 @@ def parse_args():
     
     # Required arguments
     parser.add_argument('--job_id', help='Job identifier for the output filename')
-    parser.add_argument('--mode', choices=['deuteron', 'proton'], help='Experiment type')
+    parser.add_argument('--mode', choices=['deuteron', 'proton'], help='Specimen type')
+    parser.add_argument('--polarization_type', type=str, choices=['vector', 'tensor'], help='Polarization type (vector or tensor)')
     parser.add_argument('--num_samples', type=int, help='Number of samples to generate')
-    
     
     parser.add_argument('--add_noise', type=int, choices=[0, 1], default=0,
                         help='Set to 1 to add noise to signals, 0 to disable')

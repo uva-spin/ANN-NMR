@@ -3,7 +3,7 @@ from scipy.special import wofz
 import sys
 import os
 import tensorflow as tf
-
+from scipy.signal import hilbert
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from Custom_Scripts.Variables import *
 
@@ -539,50 +539,102 @@ def BaselineTensor(f, U, Cknob, eta, trim, Cstray, phi_const, DC_offset):
     return offset + DC_offset
 
 
-
-def GenerateLineshape(P,x):
-    
-    x = (x - 32.68) / 0.6
-    
-    def cosal(x,eps):
-        return (1 -eps*x-s)/bigxsquare(x,eps)
-
+def Lineshape(x,eps):
+    def cosal(x, eps):
+        return (1 - eps * x - s) / bigxsquare(x, eps)
 
     def c(x):
-        return ((g**2+(1-x-s)**2)**0.5)**0.5
-
+        return np.sqrt(np.sqrt(g**2 + (1 - x - s)**2))
 
     def bigxsquare(x, eps):
-        return (g**2 + (1 - eps * x - s)**2)**0.5
+        return np.sqrt(g**2 + (1 - eps * x - s)**2)
 
     def mult_term(x, eps):
         return 1 / (2 * np.pi * np.sqrt(bigxsquare(x, eps)))
 
     def cosaltwo(x, eps):
-        return ((1 + cosal(x, eps)) / 2)**0.5
+        return np.sqrt((1 + cosal(x, eps)) / 2)
 
     def sinaltwo(x, eps):
-        return ((1 - cosal(x, eps)) / 2)**0.5
+        return np.sqrt((1 - cosal(x, eps)) / 2)
 
     def termone(x, eps):
-        return np.pi / 2 + np.arctan((bigy**2 - bigxsquare(x, eps)) / ((2 * bigy * (bigxsquare(x, eps))**0.5) * sinaltwo(x, eps)))
+        return np.pi / 2 + np.arctan((bigy**2 - bigxsquare(x, eps)) / (2 * bigy * np.sqrt(bigxsquare(x, eps)) * sinaltwo(x, eps)))
 
     def termtwo(x, eps):
-        return np.log((bigy**2 + bigxsquare(x, eps) + 2 * bigy * (bigxsquare(x, eps)**0.5) * cosaltwo(x, eps)) / 
-                    (bigy**2 + bigxsquare(x, eps) - 2 * bigy * (bigxsquare(x, eps)**0.5) * cosaltwo(x, eps)))
+        return np.log((bigy**2 + bigxsquare(x, eps) + 2 * bigy * np.sqrt(bigxsquare(x, eps)) * cosaltwo(x, eps)) /
+                    (bigy**2 + bigxsquare(x, eps) - 2 * bigy * np.sqrt(bigxsquare(x, eps)) * cosaltwo(x, eps)))
 
     def icurve(x, eps):
         return mult_term(x, eps) * (2 * cosaltwo(x, eps) * termone(x, eps) + sinaltwo(x, eps) * termtwo(x, eps))
+    
+    return icurve(x,eps)/10
+
+
+
+def GenerateVectorLineshape(P,x):
+    
+    x = (x - 32.68) / 0.6
 
     r = (np.sqrt(4-3*P**(2))+P)/(2-2*P)
-    Iplus = r*icurve(x,1)/10
-    Iminus = icurve(x,-1)/10
+
+    Iplus = r*Lineshape(x,1)
+    Iminus = Lineshape(x,-1)
+
     signal = Iplus + Iminus
+
     return signal,Iplus,Iminus
+
+
+def GenerateTensorLineshape(x, P, phi_deg):
+    """
+    Calculate the total signal for given x, polarization P, and phase angle phi.
+    
+    Parameters:
+    -----------
+    x : float or array-like
+        The x-coordinate value(s)
+    P : float
+        Input polarization (between 0 and 1)
+    phi_deg : float
+        Phase angle in degrees
+        
+    Returns:
+    --------
+    float or array-like
+        The total signal value(s)
+    """
+    # System parameters
+    g = 0.05
+    s = 0.04
+    bigy = np.sqrt(3 - s)
+    
+    # Calculate r from P
+    r = (np.sqrt(4 - 3 * P**2) + P) / (2 - 2 * P)
+    
+    # Convert phase to radians
+    phi_rad = np.deg2rad(phi_deg)
+    
+    # Calculate absorptive signals
+    yvals_absorp1 = Lineshape(x, 1)        # χ''₊
+    yvals_absorp2 = Lineshape(-x, 1)       # χ''₋
+    
+    # Calculate dispersive signals using Hilbert transform
+    yvals_disp1 = np.imag(hilbert(yvals_absorp1))  # χ'₊
+    yvals_disp2 = np.imag(hilbert(yvals_absorp2))  # χ'₋
+    
+    # Calculate phase-sensitive linear combination
+    Iplus = r * (yvals_absorp1 * np.sin(phi_rad) + yvals_disp1 * np.cos(phi_rad))
+    Iminus = yvals_absorp2 * np.sin(phi_rad) + yvals_disp2 * np.cos(phi_rad)
+
+    signal = Iplus + Iminus
+    
+    # Return total signal
+    return signal, Iplus, Iminus
 
         
 
-def Sampling_Lineshape(P, x, bound):
+def SamplingVectorLineshape(P, x, bound):
     """Sampling the lineshape with a stochastic shift to frequency bins.
 
     Args:
@@ -596,7 +648,24 @@ def Sampling_Lineshape(P, x, bound):
     shift = np.full(len(x),np.random.uniform( -bound , bound))
     x += shift
     ### Generate the lineshape with the shifted 
-    signal, _, _ = GenerateLineshape(P,x)
+    signal, _, _ = GenerateVectorLineshape(P,x)
+    return signal
+
+def SamplingTensorLineshape(P, x, bound):
+    """Sampling the lineshape with a stochastic shift to frequency bins.
+
+    Args:
+        P (float): Polarization
+        x (list): Frequency range
+        bound (float): Bound of the shift
+
+    Returns:
+        signal (list): Generated lineshape with a stochastic shift
+    """
+    shift = np.full(len(x),np.random.uniform( -bound , bound))
+    x += shift
+    ### Generate the lineshape with the shifted 
+    signal, _ , _  = GenerateTensorLineshape(x, P, 0)
     return signal
 
 def GenerateLineshapeTensor(P, x): ### Working now

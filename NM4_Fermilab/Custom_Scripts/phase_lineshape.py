@@ -58,7 +58,7 @@ fig = plt.figure(figsize=(16, 16))
 ax = fig.add_subplot(1, 1, 1)
 
 # --- Generate and plot signals for different phase values ---
-phi_values = np.linspace(0, 360, 360)  # 36 values from 0 to 360 degrees
+phi_values = np.linspace(0, 360, 1000)  # 36 values from 0 to 360 degrees
 
 for i, phi_deg in enumerate(phi_values):
     phi_rad = np.deg2rad(phi_deg)
@@ -75,10 +75,12 @@ for i, phi_deg in enumerate(phi_values):
     alpha = 0.7 - (i / len(phi_values)) * 0.5  # Fade out as phi increases
     
     plt.plot(xvals, total_signal, color=color, alpha=alpha, linewidth=2)
+    # plt.plot(xvals, signal1, color='red', alpha=alpha, linewidth=2)
+    # plt.plot(xvals, signal2, color='green', alpha=alpha, linewidth=2)
 
 
 norm = plt.Normalize(0, 360)
-sm = plt.cm.ScalarMappable(cmap=plt.cm.plasma, norm=norm)
+sm = plt.cm.ScalarMappable(cmap='plasma', norm=norm)
 sm.set_array([])
 cbar = plt.colorbar(sm, ax=ax, orientation='horizontal', pad=0.1)
 cbar.set_label('φ (degrees)', fontsize=labelfontsize, fontweight='bold')
@@ -134,7 +136,7 @@ plt.title('Phase-Sensitive Signal Variation (φ = 0° to 360°)', fontsize=28, p
 # Save figure
 fig.set_size_inches(24, 16)
 fig.savefig('signal_phase_variation.jpeg', dpi=600, bbox_inches='tight')
-plt.show()
+# plt.show()
 
 def create_signal_heatmap(signal1, signal2, xvals, phi_values):
     """
@@ -164,7 +166,7 @@ def create_signal_heatmap(signal1, signal2, xvals, phi_values):
         ax2.plot(imag_part[:, j], real_part[:, j], color='gray', alpha=0.2, linewidth=0.5)
     # Now scatter all points, colored by phase
     scatter = ax2.scatter(imag_part.flatten(), real_part.flatten(), c=np.repeat(phi_values, len(xvals)), 
-                          cmap='plasma', s=8, alpha=0.8)
+                          cmap='hsv', s=8, alpha=0.8)
     cbar2 = plt.colorbar(scatter, ax=ax2, orientation='horizontal', pad=0.1)
     cbar2.set_label('φ (degrees)', fontsize=labelfontsize, fontweight='bold')
     cbar2.ax.tick_params(labelsize=labelfontsize-8)
@@ -183,7 +185,7 @@ def create_signal_heatmap(signal1, signal2, xvals, phi_values):
     plt.tight_layout(rect=[0, 0.05, 1, 0.95])
     fig.set_size_inches(24, 16)
     fig.savefig('signal_heatmap_real_imag_only.jpeg', dpi=600, bbox_inches='tight')
-    plt.show()
+    # plt.show()
 
 # Add this after your main plot code:
 create_signal_heatmap(yvals_absorp1, yvals_disp1, xvals, phi_values)
@@ -207,32 +209,31 @@ im = plt.imshow(
     aspect='auto',
     extent=[xvals[0], xvals[-1], phi_values[0], phi_values[-1]],
     origin='lower',
-    cmap='plasma'
+    cmap='hsv'
 )
 
 # Add colorbar
-cbar = plt.colorbar(im, orientation='horizontal', pad=0.1)
+cbar = plt.colorbar(im, orientation='horizontal', pad=0.15)
 cbar.set_label('Signal Amplitude', fontsize=labelfontsize, fontweight='bold')
 cbar.ax.tick_params(labelsize=labelfontsize-8)
 
 # Add labels and title
-plt.xlabel('R', fontsize=axisFontSize)
-plt.ylabel('φ (degrees)', fontsize=axisFontSize)
+plt.xlabel('R', fontsize=24)
+plt.ylabel('φ (degrees)', fontsize=24)
 plt.title('Phase-Sensitive Signal Variation', fontsize=28, pad=20)
 
 # Format ticks
-plt.xticks(fontsize=axisFontSize-8)
-plt.yticks(fontsize=axisFontSize-8)
+plt.xticks(fontsize=16)
+plt.yticks(fontsize=16)
 
 plt.tight_layout()
-plt.savefig('signal_phase_heatmap.jpeg', dpi=300, bbox_inches='tight')
-plt.show()
+plt.savefig('signal_phase_heatmap.jpeg', dpi=600, bbox_inches='tight')
 
-# Create arrays for real and imaginary components
+
+
 real_signal = np.zeros((len(phi_values), len(xvals)))
 imag_signal = np.zeros((len(phi_values), len(xvals)))
 
-# Calculate real and imaginary components for each phase
 for i, phi_deg in enumerate(phi_values):
     phi_rad = np.deg2rad(phi_deg)
     
@@ -242,24 +243,122 @@ for i, phi_deg in enumerate(phi_values):
     # Imaginary component (sine terms)
     imag_signal[i, :] = r * yvals_absorp1 * np.sin(phi_rad) + yvals_absorp2 * np.sin(phi_rad)
 
-# Create 2D histogram (heatmap) of the phase space
-plt.figure(figsize=(24, 16))
+
+# Create heatmap
+fig = plt.figure(figsize=(24, 10))
+
+# Create a GridSpec to handle the subplots and colorbar
+gs = plt.GridSpec(1, 2, width_ratios=[1, 1], height_ratios=[1], wspace=0.3)
+
+# Real component heatmap
+ax1 = plt.subplot(gs[0])
+im1 = ax1.imshow(
+    real_signal,
+    aspect='auto',
+    extent=[xvals[0], xvals[-1], phi_values[0], phi_values[-1]],
+    origin='lower',
+    cmap='hsv'
+)
+ax1.set_xlabel('R', fontsize=24)
+ax1.set_ylabel('φ (degrees)', fontsize=24)
+ax1.set_title('Real Component', fontsize=28, pad=20)
+ax1.tick_params(axis='both', labelsize=16)
+
+# Imaginary component heatmap
+ax2 = plt.subplot(gs[1])
+im2 = ax2.imshow(
+    imag_signal,
+    aspect='auto',
+    extent=[xvals[0], xvals[-1], phi_values[0], phi_values[-1]],
+    origin='lower',
+    cmap='hsv'
+)
+ax2.set_xlabel('R', fontsize=24)
+ax2.set_ylabel('φ (degrees)', fontsize=24)
+ax2.set_title('Imaginary Component', fontsize=28, pad=20)
+ax2.tick_params(axis='both', labelsize=16)
+
+# Add a shared colorbar
+cbar_ax = fig.add_axes([0.92, 0.15, 0.02, 0.7])  # [left, bottom, width, height]
+cbar = fig.colorbar(im1, cax=cbar_ax)
+cbar.set_label('Signal Amplitude', fontsize=labelfontsize, fontweight='bold')
+cbar.ax.tick_params(labelsize=labelfontsize-8)
+
+plt.tight_layout(rect=[0, 0, 0.9, 1])  # Adjust layout to make room for colorbar
+plt.savefig('signal_phase_heatmap_real_imag.jpeg', dpi=600, bbox_inches='tight')
+# plt.show()
+
+# Create side-by-side 2D histograms for real and imaginary components
+plt.figure(figsize=(24, 10))
+
+# Real component histogram
+plt.subplot(1, 2, 1)
 plt.hist2d(imag_signal.flatten(), real_signal.flatten(), 
-          bins=125, cmap='seismic', density=True)
-
-# Add colorbar
+          bins=125, cmap='hsv', density=True)
 plt.colorbar(label='Density')
-
-# Add labels and title
 plt.xlabel('Imaginary Signal', fontsize=axisFontSize)
 plt.ylabel('Real Signal', fontsize=axisFontSize)
-plt.title('Phase Space Density Plot', fontsize=28, pad=20)
-
-# Format ticks
+plt.title('Real Component Phase Space', fontsize=28, pad=20)
 plt.xticks(fontsize=axisFontSize-8)
 plt.yticks(fontsize=axisFontSize-8)
-
 plt.grid(True, alpha=0.3)
+
+# Imaginary component histogram
+plt.subplot(1, 2, 2)
+plt.hist2d(imag_signal.flatten(), real_signal.flatten(), 
+          bins=125, cmap='hsv', density=True)
+plt.colorbar(label='Density')
+plt.xlabel('Imaginary Signal', fontsize=axisFontSize)
+plt.ylabel('Real Signal', fontsize=axisFontSize)
+plt.title('Imaginary Component Phase Space', fontsize=28, pad=20)
+plt.xticks(fontsize=axisFontSize-8)
+plt.yticks(fontsize=axisFontSize-8)
+plt.grid(True, alpha=0.3)
+
 plt.tight_layout()
-plt.savefig('phase_space_density.jpeg', dpi=300, bbox_inches='tight')
-plt.show()
+plt.savefig('phase_space_components_side_by_side.jpeg', dpi=300, bbox_inches='tight')
+# plt.show()
+
+def calculate_total_signal(x, P, phi_deg):
+    """
+    Calculate the total signal for given x, polarization P, and phase angle phi.
+    
+    Parameters:
+    -----------
+    x : float or array-like
+        The x-coordinate value(s)
+    P : float
+        Input polarization (between 0 and 1)
+    phi_deg : float
+        Phase angle in degrees
+        
+    Returns:
+    --------
+    float or array-like
+        The total signal value(s)
+    """
+    # System parameters
+    g = 0.05
+    s = 0.04
+    bigy = np.sqrt(3 - s)
+    
+    # Calculate r from P
+    r = (np.sqrt(4 - 3 * P**2) + P) / (2 - 2 * P)
+    
+    # Convert phase to radians
+    phi_rad = np.deg2rad(phi_deg)
+    
+    # Calculate absorptive signals
+    yvals_absorp1 = icurve(x, 1) / 10        # χ''₊
+    yvals_absorp2 = icurve(-x, 1) / 10       # χ''₋
+    
+    # Calculate dispersive signals using Hilbert transform
+    yvals_disp1 = np.imag(hilbert(yvals_absorp1))  # χ'₊
+    yvals_disp2 = np.imag(hilbert(yvals_absorp2))  # χ'₋
+    
+    # Calculate phase-sensitive linear combination
+    signal1 = r * (yvals_absorp1 * np.sin(phi_rad) + yvals_disp1 * np.cos(phi_rad))
+    signal2 = yvals_absorp2 * np.sin(phi_rad) + yvals_disp2 * np.cos(phi_rad)
+    
+    # Return total signal
+    return signal1 + signal2

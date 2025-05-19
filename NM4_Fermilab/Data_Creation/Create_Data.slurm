@@ -14,6 +14,7 @@ PROJECT_DIR="..."  ### Change this to your own directory
 OUTPUT_DIR="${PROJECT_DIR}/Test"
 OUTPUT_FILENAME="Deuteron_1_60_With_Noise_500K.parquet"  # Global variable for output filename
 MODE="deuteron"                       # Options: deuteron, proton
+POLARIZATION_TYPE="tensor"            # Options: vector, tensor
 NUM_SAMPLES=10                      # Number of samples per task ### TOTAL NUMBER OF SAMPLES = NUM_SAMPLES * SLURM_ARRAY_TASK_MAX
 ADD_NOISE=1                           # 0=no noise, 1=add noise
 
@@ -39,6 +40,7 @@ echo "Configuration:"
 echo "  - Output directory: ${OUTPUT_DIR}"
 echo "  - Output filename: ${OUTPUT_FILENAME}"
 echo "  - Mode: ${MODE}"
+echo "  - Polarization type: ${POLARIZATION_TYPE}"
 echo "  - Samples per job: ${NUM_SAMPLES}"
 echo "  - Add noise: ${ADD_NOISE}"
 echo "  - Oversampling: ${OVERSAMPLING}"
@@ -78,13 +80,14 @@ import subprocess
 # Get parameters from command line
 job_id = sys.argv[1]
 mode = sys.argv[2]
-num_samples = sys.argv[3]
-add_noise = sys.argv[4]
-oversampling = sys.argv[5]
-oversampled_value = sys.argv[6]
-oversampling_upper_bound = sys.argv[7]
-oversampling_lower_bound = sys.argv[8]
-upper_bound = sys.argv[9]
+polarization_type = sys.argv[3]
+num_samples = sys.argv[4]
+add_noise = sys.argv[5]
+oversampling = sys.argv[6]
+oversampled_value = sys.argv[7]
+oversampling_upper_bound = sys.argv[8]
+oversampling_lower_bound = sys.argv[9]
+upper_bound = sys.argv[10]
 lower_bound = sys.argv[10]
 p_max = sys.argv[11]
 alpha = sys.argv[12]
@@ -102,6 +105,7 @@ cmd = [
     "python", "Create_Training_Data.py",
     "--job_id", job_id,
     "--mode", mode,
+    "--polarization_type", polarization_type,
     "--num_samples", num_samples,
     "--add_noise", add_noise,
     "--oversampling", oversampling,
@@ -132,6 +136,7 @@ echo "Running signal generation script using apptainer..."
 apptainer run --nv $CONTAINERDIR/tensorflow-2.17.0.sif run_signal_generator.py \
     ${SLURM_ARRAY_TASK_ID} \
     ${MODE} \
+    ${POLARIZATION_TYPE} \
     ${NUM_SAMPLES} \
     ${ADD_NOISE} \
     ${OVERSAMPLING} \
