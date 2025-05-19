@@ -133,29 +133,36 @@ class SignalGenerator:
         
         return Voigt(x, amp, sig, gam, center), None
     
+
     def _generate_deuteron_signal(self, P):
-        ### Assign Sampling and GenerateLineshape functions based on polarization type
-        if self.polarization_type == "vector":
-            Sampling = SamplingVectorLineshape(P,X,self.bound)
-            GenerateLineshape = GenerateVectorLineshape(P,X)
-        elif self.polarization_type == "tensor":
-            Sampling = SamplingTensorLineshape(P,X,self.bound)
-            GenerateLineshape = GenerateTensorLineshape(P,X, self.phi)
-            ### self.phi here is the shared phase angle for both the QCurve and the Magnetic Susceptibility components. 
-            ### They are both the same and should be iterated over
-        else:
-            raise ValueError(f"Invalid polarization type: {self.polarization_type}. Choose 'vector' or 'tensor'.")
+        X = np.linspace(30.88, 34.48, 500)
+        
         if self.shifting:
             """Generate a deuteron signal using the Sampling_Lineshape function. Here, we are shifting the signal by a random amount within the bound to 
             capture more information about the lineshape"""
-            X = np.linspace(30.88,34.48,500) ### Center point here is ~32.6MHz 
-            signal = Sampling(P, X, self.bound) / 1500.0 ### Scale here needs to be worked on
+            if self.polarization_type == "vector":
+                # Call the function directly
+                signal = SamplingVectorLineshape(P, X, self.bound)
+            elif self.polarization_type == "tensor":
+                signal = SamplingTensorLineshape(P, X, self.bound)
+            else:
+                raise ValueError(f"Invalid polarization type: {self.polarization_type}. Choose 'vector' or 'tensor'.")
+            
+            signal = signal / 1500.0  # Scale here needs to be worked on
             return signal
         else:
             """Generate a deuteron signal using the GenerateLineshape function."""
-            X = np.linspace(30.88,34.48,500)
-            signal, _, _ = GenerateLineshape(P, X)   
-            signal /= 1500.0 ## Scaling it down here
+            if self.polarization_type == "vector":
+                # Call the function and unpack the returned tuple
+                result = GenerateVectorLineshape(P, X)
+            elif self.polarization_type == "tensor":
+                result = GenerateTensorLineshape(P, X, self.phi)
+            else:
+                raise ValueError(f"Invalid polarization type: {self.polarization_type}. Choose 'vector' or 'tensor'.")
+            
+            # Now unpack the result tuple
+            signal, _, _ = result
+            signal /= 1500.0  # Scaling it down here
             return signal
     
     def _add_baseline_and_noise(self, signal, x):
