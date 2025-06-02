@@ -9,6 +9,11 @@ from sklearn.preprocessing import MinMaxScaler, StandardScaler, RobustScaler
 import sys
 import os
 import time
+import xgboost as xgb
+from sklearn.metrics import accuracy_score, roc_auc_score, precision_score, recall_score, f1_score
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, classification_report
+import joblib
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from Custom_Scripts.Misc_Functions import *
 from Custom_Scripts.Loss_Functions import *
@@ -32,7 +37,6 @@ os.environ['TF_ENABLE_AUTO_MIXED_PRECISION'] = '1'
 os.environ['TF_GPU_THREAD_MODE'] = 'gpu_private'
 os.environ['TF_GPU_THREAD_COUNT'] = '4'
 os.environ['TF_CUDNN_USE_AUTOTUNE'] = '1'
-# os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 
 gpus = tf.config.list_physical_devices('GPU')
 if gpus:
@@ -44,7 +48,7 @@ if gpus:
 
 
 data_path = find_file("Deuteron_TE_60_Noisy_Shifted_100K.parquet")  
-version = 'Deuteron_TE_60_Noisy_Shifted_100K_CNN_Attention_Fixed_V4'  
+version = 'Deuteron_TE_60_Noisy_Shifted_100K_CNN_XGBoost_V1'  
 performance_dir = f"Model_Performance/{version}"  
 model_dir = f"Models/{version}"  
 os.makedirs(performance_dir, exist_ok=True)
@@ -91,15 +95,18 @@ X_train = scaler.fit_transform(X_train)
 X_val = scaler.transform(X_val)
 X_test = scaler.transform(X_test)
 
+# Save the scaler for future use
+joblib.dump(scaler, os.path.join(model_dir, 'scaler.pkl'))
+
 # Reshape targets and convert to float32 for better precision
 y_train = y_train.reshape(-1, 1).astype(np.float32)
 y_val = y_val.reshape(-1, 1).astype(np.float32)
 y_test = y_test.reshape(-1, 1).astype(np.float32)
 
 # Create classification targets
-y_train_class = (y_train < P_THRESHOLD).astype(np.float32)
-y_val_class = (y_val < P_THRESHOLD).astype(np.float32)
-y_test_class = (y_test < P_THRESHOLD).astype(np.float32)
+y_train_class = (y_train < P_THRESHOLD).astype(np.int32)
+y_val_class = (y_val < P_THRESHOLD).astype(np.int32)
+y_test_class = (y_test < P_THRESHOLD).astype(np.int32)
 
 # Calculate class weights to handle imbalance
 class_counts = np.bincount(y_train_class.flatten().astype(int))
@@ -142,21 +149,6 @@ def adaptive_smooth_l1_loss():
         loss = tf.where(abs_error < delta, less_than_delta, greater_than_delta)
         
         return tf.reduce_mean(loss)
-    return loss_fn
-
-def weighted_binary_crossentropy(class_weights):
-    """Weighted BCE with improved numerical stability for noisy data"""
-    def loss_fn(y_true, y_pred):
-        # Apply sigmoid with higher numerical precision
-        y_pred = tf.clip_by_value(tf.nn.sigmoid(y_pred), 1e-7, 1.0 - 1e-7)
-        
-        # Calculate weighted BCE with improved numerical stability
-        weights = tf.where(tf.equal(y_true, 1), 
-                          tf.ones_like(y_true) * class_weights[1],
-                          tf.ones_like(y_true) * class_weights[0])
-        
-        bce = -(y_true * tf.math.log(y_pred) + (1 - y_true) * tf.math.log(1 - y_pred))
-        return tf.reduce_mean(weights * bce)
     return loss_fn
 
 def noise_resistant_conv_block(x, filters, kernel_size=3, dilation_rate=1):
@@ -217,311 +209,194 @@ def enhanced_attention(x, ratio=8):
     attention = layers.Reshape((1, channel_dim))(attention)
     return layers.Multiply()([x, attention])
 
-def build_noise_robust_model(input_shape=(500, 1), is_classifier=True, l2_reg=1e-5):
-    """Enhanced model architecture with improved feature extraction and precision"""
+def build_precision_regression_model(input_shape=(500,), l2_reg=1e-5):
+    """Optimized regression model for high precision polarization prediction"""
     inputs = Input(shape=input_shape, dtype='float64')
     
-    # Initial feature extraction with larger kernel
+    # Initial feature extraction with frequency-aware processing
     x = layers.Reshape((input_shape[0], 1))(inputs)
-    x = layers.Conv1D(64, 11, padding='same', activation='relu',
-                     kernel_regularizer=regularizers.l2(l2_reg),
-                     dtype='float64')(x)
-    x = layers.BatchNormalization(dtype='float64')(x)
-    x = layers.LayerNormalization(dtype='float64')(x)
     
-    # First stage - preserve fine details
-    x1 = noise_resistant_conv_block(x, 64, kernel_size=3, dilation_rate=1)
-    x2 = noise_resistant_conv_block(x1, 64, kernel_size=3, dilation_rate=2)
-    x3 = noise_resistant_conv_block(x2, 64, kernel_size=3, dilation_rate=4)
-    x = layers.Add()([x1, x2, x3])  # Enhanced residual connection
+    # First stage: Multi-scale feature extraction
+    # Use parallel convolutions with different kernel sizes to capture various frequency patterns
+    conv1 = layers.Conv1D(32, 3, padding='same', activation='relu', 
+                         kernel_regularizer=regularizers.l2(l2_reg))(x)
+    conv2 = layers.Conv1D(32, 5, padding='same', activation='relu',
+                         kernel_regularizer=regularizers.l2(l2_reg))(x)
+    conv3 = layers.Conv1D(32, 7, padding='same', activation='relu',
+                         kernel_regularizer=regularizers.l2(l2_reg))(x)
     
-    # Apply enhanced attention
-    x = enhanced_attention(x)
+    # Concatenate multi-scale features
+    x = layers.Concatenate()([conv1, conv2, conv3])
+    x = layers.BatchNormalization()(x)
+    x = layers.SpatialDropout1D(0.1)(x)
     
-    # Second stage with adaptive pooling
-    x = layers.MaxPooling1D(2)(x)
-    x4 = noise_resistant_conv_block(x, 128, kernel_size=3, dilation_rate=1)
-    x5 = noise_resistant_conv_block(x4, 128, kernel_size=3, dilation_rate=2)
-    x6 = noise_resistant_conv_block(x5, 128, kernel_size=3, dilation_rate=4)
-    x = layers.Add()([x4, x5, x6])
+    # Second stage: Feature refinement with dilated convolutions
+    x = layers.Conv1D(64, 3, padding='same', dilation_rate=2, activation='relu',
+                     kernel_regularizer=regularizers.l2(l2_reg))(x)
+    x = layers.BatchNormalization()(x)
+    x = layers.SpatialDropout1D(0.1)(x)
     
-    # More attention with skip connection
-    x = enhanced_attention(x)
+    # Third stage: Global context with attention
+    # Self-attention for capturing long-range dependencies
+    attention_output = layers.MultiHeadAttention(
+        num_heads=4, key_dim=16)(x, x)
+    x = layers.Add()([x, attention_output])
+    x = layers.LayerNormalization()(x)
     
-    # Third stage with global context
-    x = layers.MaxPooling1D(2)(x)
-    x7 = noise_resistant_conv_block(x, 256, kernel_size=3, dilation_rate=1)
-    x8 = noise_resistant_conv_block(x7, 256, kernel_size=3, dilation_rate=2)
-    x = layers.Add()([x7, x8])
+    # Global pooling with multiple strategies
+    avg_pool = layers.GlobalAveragePooling1D()(x)
+    max_pool = layers.GlobalMaxPooling1D()(x)
+    x = layers.Concatenate()([avg_pool, max_pool])
     
-    # Enhanced global context
-    x_avg = layers.GlobalAveragePooling1D()(x)
-    x_max = layers.GlobalMaxPooling1D()(x)
-    x_std = layers.Lambda(lambda x: tf.math.reduce_std(x, axis=1), dtype='float64')(x)
-    x = layers.Concatenate()([x_avg, x_max, x_std])
+    # Dense layers with residual connections
+    dense1 = layers.Dense(64, activation='relu',
+                         kernel_regularizer=regularizers.l2(l2_reg))(x)
+    dense1 = layers.BatchNormalization()(dense1)
+    dense1 = layers.Dropout(0.2)(dense1)
     
-    # Task-specific heads with enhanced architecture
-    if is_classifier:
-        x = layers.Dense(128, activation='relu', 
-                        kernel_regularizer=regularizers.l2(l2_reg),
-                        dtype='float64')(x)
-        x = layers.BatchNormalization(dtype='float64')(x)
-        x = layers.LayerNormalization(dtype='float64')(x)
-        x = layers.Dropout(0.3)(x)
-        x = layers.Dense(64, activation='relu',
-                        kernel_regularizer=regularizers.l2(l2_reg),
-                        dtype='float64')(x)
-        x = layers.BatchNormalization(dtype='float64')(x)
-        x = layers.Dense(1, dtype='float64')(x)
-    else:
-        # Enhanced regression head for better precision
-        x = layers.Dense(128, activation='relu',
-                        kernel_regularizer=regularizers.l2(l2_reg),
-                        dtype='float64')(x)
-        x = layers.BatchNormalization(dtype='float64')(x)
-        x = layers.LayerNormalization(dtype='float64')(x)
-        x = layers.Dropout(0.2)(x)
-        
-        x = layers.Dense(64, activation='relu',
-                        kernel_regularizer=regularizers.l2(l2_reg),
-                        dtype='float64')(x)
-        x = layers.BatchNormalization(dtype='float64')(x)
-        x = layers.LayerNormalization(dtype='float64')(x)
-        
-        x = layers.Dense(32, activation='relu',
-                        kernel_regularizer=regularizers.l2(l2_reg),
-                        dtype='float64')(x)
-        x = layers.BatchNormalization(dtype='float64')(x)
-        
-        # Final layer with precision-focused activation
-        x = layers.Dense(1, activation=None, dtype='float64')(x)
+    dense2 = layers.Dense(32, activation='relu',
+                         kernel_regularizer=regularizers.l2(l2_reg))(dense1)
+    dense2 = layers.BatchNormalization()(dense2)
+    dense2 = layers.Dropout(0.2)(dense2)
     
-    return models.Model(inputs=inputs, outputs=x)
+    # Output layer with specialized initialization for regression
+    outputs = layers.Dense(1, activation=None,
+                          kernel_initializer=tf.keras.initializers.GlorotNormal(),
+                          bias_initializer='zeros')(dense2)
+    
+    return models.Model(inputs=inputs, outputs=outputs)
 
-def create_optimized_dataset(X, y, batch_size, shuffle=True):
-    """Creates an optimized TF dataset with noise-robust processing"""
-    # Convert inputs to the most efficient format
-    X = tf.convert_to_tensor(X, dtype=tf.float32)
-    y = tf.convert_to_tensor(y, dtype=tf.float32)
-    
+def precision_focused_loss():
+    """Loss function optimized for high precision regression"""
+    def loss_fn(y_true, y_pred):
+        # Calculate absolute error
+        abs_error = tf.abs(y_true - y_pred)
+        
+        # Calculate relative error with numerical stability
+        rel_error = abs_error / (tf.abs(y_true) + 1e-8)
+        
+        # Weight the loss based on the magnitude of the true value
+        # This gives more importance to small values
+        weights = 1.0 / (tf.abs(y_true) + 1e-8)
+        weights = tf.clip_by_value(weights, 1.0, 100.0)  # Limit weight range
+        
+        # Combine absolute and relative errors
+        loss = weights * (0.5 * tf.square(abs_error) + 0.5 * rel_error)
+        
+        return tf.reduce_mean(loss)
+    return loss_fn
+
+# Create TensorFlow datasets for efficient training
+def create_tf_dataset(X, y, batch_size=32, shuffle=True, buffer_size=1000):
     dataset = tf.data.Dataset.from_tensor_slices((X, y))
-    
     if shuffle:
-        dataset = dataset.shuffle(buffer_size=min(len(X), 10000))
-    
-    # Performance optimizations
-    dataset = dataset.batch(batch_size)
-    dataset = dataset.prefetch(tf.data.AUTOTUNE)
-    
-    return dataset
+        dataset = dataset.shuffle(buffer_size)
+    return dataset.batch(batch_size).prefetch(tf.data.AUTOTUNE)
 
 if __name__ == "__main__":
     # Define optimized hyperparameters
     params = {
-        'learning_rate': 1e-3,       # Higher learning rate for faster initial convergence
-        'batch_size': 512,           # Larger batch size for noise averaging
-        'l2_reg': 5e-5,              # L2 regularization to prevent overfitting
-        'epochs': 75,                # More epochs for better convergence
-        'patience': 10               # More patience for noisy training curves
+        'learning_rate': 0.001,
+        'batch_size': 128,  # Increased for better gradient estimates
+        'l2_reg': 1e-5,
+        'epochs': 200,
+        'patience': 30
     }
     
-    start_time = time.time()
+    # Create regression models
+    print("Creating regression models...")
+    reg_model_low = build_precision_regression_model(input_shape=(X_train.shape[1],))
+    reg_model_high = build_precision_regression_model(input_shape=(X_train.shape[1],))
     
-    # Create models with noise-robust architecture
-    classifier_model = build_noise_robust_model(
-        input_shape=(X_train.shape[1], 1), 
-        is_classifier=True, 
-        l2_reg=params['l2_reg']
+    # Configure learning rate schedule with warmup
+    initial_learning_rate = params['learning_rate']
+    decay_steps = params['epochs'] * (len(X_train) // params['batch_size'])
+    
+    lr_schedule = tf.keras.optimizers.schedules.CosineDecayRestarts(
+        initial_learning_rate=initial_learning_rate,
+        first_decay_steps=decay_steps // 4,
+        t_mul=2.0,
+        m_mul=0.9,
+        alpha=0.1
     )
     
-    reg_model_low = build_noise_robust_model(
-        input_shape=(X_train.shape[1], 1), 
-        is_classifier=False, 
-        l2_reg=params['l2_reg']
+    # Compile regression models with optimized settings
+    optimizer = tf.keras.optimizers.AdamW(
+        learning_rate=lr_schedule,
+        weight_decay=1e-4,
+        beta_1=0.9,
+        beta_2=0.999,
+        epsilon=1e-7
     )
     
-    reg_model_high = build_noise_robust_model(
-        input_shape=(X_train.shape[1], 1), 
-        is_classifier=False, 
-        l2_reg=params['l2_reg']
-    )
-    
-    print(f"Model building time: {time.time() - start_time:.2f} seconds")
-    
-    # Create optimized datasets
-    train_dataset_class = create_optimized_dataset(
-        X_train, y_train_class, params['batch_size']
-    )
-    val_dataset_class = create_optimized_dataset(
-        X_val, y_val_class, params['batch_size'], shuffle=False
-    )
-    
-    train_dataset_low = create_optimized_dataset(
-        X_train_low, y_train_low, params['batch_size']
-    )
-    val_dataset_low = create_optimized_dataset(
-        X_val_low, y_val_low, params['batch_size'], shuffle=False
-    )
-    
-    train_dataset_high = create_optimized_dataset(
-        X_train_high, y_train_high, params['batch_size']
-    )
-    val_dataset_high = create_optimized_dataset(
-        X_val_high, y_val_high, params['batch_size'], shuffle=False
-    )
-    
-    # OneCycle learning rate schedule - faster convergence and better generalization
-    # Especially effective for noisy data
-    steps_per_epoch = len(X_train) // params['batch_size']
-    total_steps = params['epochs'] * steps_per_epoch
-    
-    class OneCycleLR(tf.keras.optimizers.schedules.LearningRateSchedule):
-        def __init__(self, max_lr, total_steps, pct_start=0.3, div_factor=25, final_div_factor=10000):
-            super(OneCycleLR, self).__init__()
-            self.max_lr = max_lr
-            self.total_steps = total_steps
-            self.pct_start = pct_start
-            self.div_factor = div_factor
-            self.final_div_factor = final_div_factor
-            
-            # Calculate key points
-            self.step_size_up = int(total_steps * pct_start)
-            self.step_size_down = total_steps - self.step_size_up
-            
-            # Calculate learning rates
-            self.initial_lr = max_lr / div_factor
-            self.final_lr = max_lr / (div_factor * final_div_factor)
-            
-        def __call__(self, step):
-            step = tf.cast(step, tf.float32)
-            
-            # Use tf.where instead of if/else for control flow
-            lr = tf.where(
-                step < self.step_size_up,
-                # Warm-up phase
-                self.initial_lr + (self.max_lr - self.initial_lr) * (step / self.step_size_up),
-                # Annealing phase
-                self.max_lr + (self.final_lr - self.max_lr) * ((step - self.step_size_up) / self.step_size_down)
-            )
-            
-            return lr
-            
-        def get_config(self):
-            return {
-                "max_lr": self.max_lr,
-                "total_steps": self.total_steps,
-                "pct_start": self.pct_start,
-                "div_factor": self.div_factor,
-                "final_div_factor": self.final_div_factor
-            }
-    
-    lr_schedule = OneCycleLR(
-        max_lr=params['learning_rate'],
-        total_steps=total_steps,
-        pct_start=0.3,  # Spend 30% of training warming up
-        div_factor=25,  # max_lr/div_factor = initial lr
-        final_div_factor=10000  # how much lower is final lr than max_lr
-    )
-    
-    # Use weighted BCE for classifier
-    classifier_model.compile(
-        optimizer=tf.keras.optimizers.Adam(learning_rate=lr_schedule, epsilon=1e-7),
-        loss=weighted_binary_crossentropy(class_weights),
-        metrics=['accuracy', tf.keras.metrics.AUC(name='auc')]
-    )
-    
-    # Add a new high-precision loss function
-    def high_precision_loss(y_true, y_pred):
-        """Custom loss function optimized for high precision regression"""
-        # Convert to float64 for higher precision
-        y_true = tf.cast(y_true, tf.float64)
-        y_pred = tf.cast(y_pred, tf.float64)
-        
-        # Small epsilon for numerical stability
-        epsilon = tf.constant(1e-10, dtype=tf.float64)
-        
-        # Value importance weights - higher weight for smaller values
-        value_importance = 1.0 / (tf.abs(y_true) + epsilon)
-        
-        # Relative error component
-        relative_error = value_importance * tf.abs(y_pred - y_true) / (tf.abs(y_true) + epsilon)
-        
-        # Absolute error component
-        absolute_error = tf.abs(y_pred - y_true)
-        
-        # Log-space error component
-        log_predictions = tf.math.log(tf.abs(y_pred) + epsilon)
-        log_targets = tf.math.log(tf.abs(y_true) + epsilon)
-        log_space_error = tf.abs(log_predictions - log_targets)
-        
-        # Combined loss with emphasis on precision
-        combined_loss = (
-            2.0 * relative_error +  # Higher weight for relative error
-            1.0 * absolute_error +  # Base absolute error
-            3.0 * log_space_error   # Higher weight for log-space error
-        )
-        
-        return tf.reduce_mean(combined_loss)
-    
-    # For regression models, use the new high-precision loss
     reg_model_low.compile(
-        optimizer=tf.keras.optimizers.Adam(learning_rate=lr_schedule, epsilon=1e-8),
-        loss=high_precision_loss,
+        optimizer=optimizer,
+        loss=precision_focused_loss(),
         metrics=['mae', tf.keras.metrics.RootMeanSquaredError()]
     )
     
     reg_model_high.compile(
-        optimizer=tf.keras.optimizers.Adam(learning_rate=lr_schedule, epsilon=1e-8),
-        loss=high_precision_loss,
+        optimizer=optimizer,
+        loss=precision_focused_loss(),
         metrics=['mae', tf.keras.metrics.RootMeanSquaredError()]
     )
     
-    # Set up logging and callbacks
-    classifier_log_file = f"{performance_dir}/training_log_classifier_model.csv"
-    low_reg_log_file = f"{performance_dir}/training_log_low_reg_model.csv"
-    high_reg_log_file = f"{performance_dir}/training_log_high_reg_model.csv"
+    # Create TensorFlow datasets
+    train_dataset_low = create_tf_dataset(X_train_low, y_train_low, params['batch_size'], shuffle=True)
+    val_dataset_low = create_tf_dataset(X_val_low, y_val_low, params['batch_size'], shuffle=False)
     
-    classifier_csv_logger = tf.keras.callbacks.CSVLogger(classifier_log_file, append=True, separator=',')
-    low_reg_csv_logger = tf.keras.callbacks.CSVLogger(low_reg_log_file, append=True, separator=',')
-    high_reg_csv_logger = tf.keras.callbacks.CSVLogger(high_reg_log_file, append=True, separator=',')
+    train_dataset_high = create_tf_dataset(X_train_high, y_train_high, params['batch_size'], shuffle=True)
+    val_dataset_high = create_tf_dataset(X_val_high, y_val_high, params['batch_size'], shuffle=False)
     
-    # Exponential Moving Average callback for more stable weights in noisy environments
-    class EMACallback(tf.keras.callbacks.Callback):
-        def __init__(self, decay=0.999):
-            super(EMACallback, self).__init__()
-            self.decay = decay
-            self.shadow_weights = []
-            self.has_initialized = False
-            
-        def on_train_begin(self, logs=None):
-            # Initialize shadow weights to model weights
-            for weight in self.model.weights:
-                self.shadow_weights.append(tf.Variable(weight, trainable=False))
-            self.has_initialized = True
-            
-        def on_batch_end(self, batch, logs=None):
-            # Update shadow weights
-            for i, weight in enumerate(self.model.weights):
-                self.shadow_weights[i].assign(
-                    self.decay * self.shadow_weights[i] + (1.0 - self.decay) * weight
-                )
-                
-        def on_epoch_end(self, epoch, logs=None):
-            # Log current loss and apply EMA weights for validation
-            print(f"EMA updated on epoch {epoch}")
-            
-        def apply_ema_weights(self):
-            # Apply shadow weights to the model for inference
-            if self.has_initialized:
-                model_weights = self.model.get_weights()
-                for i, weight in enumerate(self.model.weights):
-                    weight.assign(self.shadow_weights[i])
-                return model_weights
-            return None
-        
-        def restore_model_weights(self, model_weights):
-            if model_weights is not None:
-                self.model.set_weights(model_weights)
+    # Train models with improved callbacks
+    callbacks = [
+        tf.keras.callbacks.EarlyStopping(
+            monitor='val_mae',
+            patience=params['patience'],
+            restore_best_weights=True,
+            mode='min'
+        ),
+        tf.keras.callbacks.ReduceLROnPlateau(
+            monitor='val_mae',
+            factor=0.5,
+            patience=10,
+            min_lr=1e-6,
+            verbose=1
+        ),
+        tf.keras.callbacks.ModelCheckpoint(
+            os.path.join(model_dir, 'best_model_{}_polarization.keras'.format('low' if 'low' in locals() else 'high')),
+            monitor='val_mae',
+            save_best_only=True
+        )
+    ]
+    
+    # Create XGBoost classifier model
+    print("Creating XGBoost classifier model...")
+    xgb_classifier = xgb.XGBClassifier(
+        n_estimators=200,
+        max_depth=6,
+        learning_rate=0.1,
+        subsample=0.8,
+        colsample_bytree=0.8,
+        min_child_weight=3,
+        gamma=0.1,
+        reg_alpha=0.1,
+        reg_lambda=1.0,
+        scale_pos_weight=class_weights[1]/class_weights[0],  # Handle class imbalance
+        objective='binary:logistic',
+        eval_metric=['auc', 'error', 'logloss'],
+        use_label_encoder=False,
+        random_state=42
+    )
+    
+    # Set up CSV loggers for tracking metrics
+    os.makedirs(f"{performance_dir}/logs", exist_ok=True)
+    low_reg_csv_logger = tf.keras.callbacks.CSVLogger(
+        f"{performance_dir}/logs/low_reg_training_log.csv"
+    )
+    high_reg_csv_logger = tf.keras.callbacks.CSVLogger(
+        f"{performance_dir}/logs/high_reg_training_log.csv"
+    )
     
     # Time history callback
     class TimeHistory(tf.keras.callbacks.Callback):
@@ -535,34 +410,27 @@ if __name__ == "__main__":
             print(f" - {epoch_time:.2f}s/epoch")
             self.epoch_start_time = time.time()
     
-    ema_callback_classifier = EMACallback(decay=0.999)
-    ema_callback_low = EMACallback(decay=0.999)
-    ema_callback_high = EMACallback(decay=0.999)
     time_callback = TimeHistory()
     
-    # Train classifier model
-    print("Training classifier model...")
+    # Train XGBoost classifier model
+    print("Training XGBoost classifier model...")
     start_time = time.time()
-    classifier_history = classifier_model.fit(
-        train_dataset_class,
-        validation_data=val_dataset_class,
-        epochs=params['epochs'],
-        callbacks=[
-            tf.keras.callbacks.EarlyStopping(
-                monitor='val_auc', 
-                patience=params['patience'],
-                restore_best_weights=True,
-                mode='max'
-            ),
-            ema_callback_classifier,
-            classifier_csv_logger,
-            time_callback
-        ],
-        verbose=1
+    
+    # Flatten y_train_class for XGBoost
+    y_train_class_flat = y_train_class.flatten()
+    y_val_class_flat = y_val_class.flatten()
+    
+    # Train XGBoost with early stopping
+    xgb_classifier.fit(
+        X_train, y_train_class_flat,
+        eval_set=[(X_val, y_val_class_flat)],
+        verbose=True
     )
-    # Apply EMA weights for inference
-    model_weights = ema_callback_classifier.apply_ema_weights()
-    print(f"Classifier training time: {time.time() - start_time:.2f} seconds")
+    
+    print(f"XGBoost classifier training time: {time.time() - start_time:.2f} seconds")
+    
+    # Save XGBoost model
+    joblib.dump(xgb_classifier, f"{model_dir}/xgb_classifier.pkl")
     
     # Train low region model
     print("Training low region regression model...")
@@ -578,13 +446,11 @@ if __name__ == "__main__":
                 restore_best_weights=True,
                 mode='min'
             ),
-            ema_callback_low,
             low_reg_csv_logger,
             time_callback
         ],
         verbose=1
     )
-    ema_callback_low.apply_ema_weights()
     print(f"Low region training time: {time.time() - start_time:.2f} seconds")
     
     # Train high region model
@@ -601,41 +467,31 @@ if __name__ == "__main__":
                 restore_best_weights=True,
                 mode='min'
             ),
-            ema_callback_high,
             high_reg_csv_logger,
             time_callback
         ],
         verbose=1
     )
-    ema_callback_high.apply_ema_weights()
     print(f"High region training time: {time.time() - start_time:.2f} seconds")
 
-    # Save models in SavedModel format for better performance
-    classifier_model.save(f"{model_dir}/classifier_model.keras")
+    # Save models
     reg_model_low.save(f"{model_dir}/low_reg_model.keras")
     reg_model_high.save(f"{model_dir}/high_reg_model.keras")
 
-    # Evaluate with ensemble approach for more robust predictions
+    # Evaluate models on test set
     print("Evaluating models on test set...")
     start_time = time.time()
     
-    # Create test datasets
-    test_dataset = tf.data.Dataset.from_tensor_slices(X_test).batch(params['batch_size'])
-    
-    # Get predictions
-    test_class_pred = classifier_model.predict(test_dataset)
-    
-    # Use probability threshold tuned for optimal F1 score
-    # This is better than a fixed 0.5 threshold for imbalanced/noisy data
-    optimal_threshold = 0.4  # This could be tuned based on validation set
-    test_class_binary = (test_class_pred > optimal_threshold).astype(np.float32)
+    # Get XGBoost predictions
+    test_class_pred_proba = xgb_classifier.predict_proba(X_test)[:, 1]
+    test_class_binary = xgb_classifier.predict(X_test)
     
     # Use masks for targeted predictions
-    test_low_mask = test_class_binary.flatten() == 1
-    test_high_mask = test_class_binary.flatten() == 0
+    test_low_mask = test_class_binary == 1
+    test_high_mask = test_class_binary == 0
     
     # Initialize prediction array
-    test_pred = np.zeros_like(y_test, dtype=np.float64)  # Ensure float64
+    test_pred = np.zeros_like(y_test, dtype=np.float64)
     
     # Only predict samples classified as low
     if np.any(test_low_mask):
@@ -660,47 +516,117 @@ if __name__ == "__main__":
     # Calculate additional precision metrics
     precision_errors = []
     for pred, true in zip(test_pred.flatten(), y_test.flatten()):
-        if true != 0:  # Avoid division by zero
+        if abs(true) > 1e-10:  # Avoid division by zero
             rel_error = abs(pred - true) / abs(true)
             precision_errors.append(rel_error)
     
     mean_rel_error = np.mean(precision_errors) if precision_errors else 0
     
+    # Calculate classifier metrics
+    accuracy = accuracy_score(y_test_class.flatten(), test_class_binary)
+    auc = roc_auc_score(y_test_class.flatten(), test_class_pred_proba)
+    precision = precision_score(y_test_class.flatten(), test_class_binary)
+    recall = recall_score(y_test_class.flatten(), test_class_binary)
+    f1 = f1_score(y_test_class.flatten(), test_class_binary)
+    
     print(f"Test MAE: {test_mae:.12f}")
     print(f"Test RMSE: {test_rmse:.12f}")
     print(f"Test R²: {test_r2:.12f}")
     print(f"Mean Relative Error: {mean_rel_error:.8f}")
+    print(f"XGBoost Classifier Performance:")
+    print(f"  Accuracy: {accuracy:.4f}")
+    print(f"  AUC: {auc:.4f}")
+    print(f"  Precision: {precision:.4f}")
+    print(f"  Recall: {recall:.4f}")
+    print(f"  F1 Score: {f1:.4f}")
     print(f"Evaluation time: {time.time() - start_time:.2f} seconds")
     
     # Flatten for plotting
     y_test_flat = y_test.flatten()
     y_pred_flat = test_pred.flatten()
 
-    # Plot performance metrics and results
+    # Plot overall performance metrics and results
     plot_enhanced_performance_metrics(y_test_flat, y_pred_flat, snr_test, performance_dir, version)
     plot_enhanced_results(y_test_flat, y_pred_flat, performance_dir, version)
     
+    # Evaluate and plot performance for low and high polarization models separately
+    if np.any(test_low_mask):
+        y_test_low = y_test[test_low_mask].flatten()
+        y_pred_low = test_pred[test_low_mask].flatten()
+        snr_test_low = snr_test[test_low_mask] if snr_test is not None else None
+        
+        # Calculate metrics for low polarization model
+        low_mae = np.mean(np.abs(y_pred_low - y_test_low), dtype=np.float64)
+        low_rmse = np.sqrt(np.mean(np.square(y_pred_low - y_test_low), dtype=np.float64))
+        low_r2 = 1 - (np.sum(np.square(y_pred_low - y_test_low), dtype=np.float64) / 
+                     np.sum(np.square(y_test_low - np.mean(y_test_low)), dtype=np.float64))
+        
+        # Calculate relative error for low polarization
+        low_rel_errors = []
+        for pred, true in zip(y_pred_low, y_test_low):
+            if abs(true) > 1e-10:
+                rel_error = abs(pred - true) / abs(true)
+                low_rel_errors.append(rel_error)
+        
+        low_mean_rel_error = np.mean(low_rel_errors) if low_rel_errors else 0
+        
+        print(f"\nLow Polarization Model Performance:")
+        print(f"  MAE: {low_mae:.12f}")
+        print(f"  RMSE: {low_rmse:.12f}")
+        print(f"  R²: {low_r2:.12f}")
+        print(f"  Mean Relative Error: {low_mean_rel_error:.8f}")
+        
+        # Plot performance for low polarization model
+        plot_enhanced_performance_metrics(y_test_low, y_pred_low, snr_test_low, 
+                                         performance_dir, f"{version}_low_polarization")
+        plot_enhanced_results(y_test_low, y_pred_low, 
+                             performance_dir, f"{version}_low_polarization")
+    
+    if np.any(test_high_mask):
+        y_test_high = y_test[test_high_mask].flatten()
+        y_pred_high = test_pred[test_high_mask].flatten()
+        snr_test_high = snr_test[test_high_mask] if snr_test is not None else None
+        
+        # Calculate metrics for high polarization model
+        high_mae = np.mean(np.abs(y_pred_high - y_test_high), dtype=np.float64)
+        high_rmse = np.sqrt(np.mean(np.square(y_pred_high - y_test_high), dtype=np.float64))
+        high_r2 = 1 - (np.sum(np.square(y_pred_high - y_test_high), dtype=np.float64) / 
+                      np.sum(np.square(y_test_high - np.mean(y_test_high)), dtype=np.float64))
+        
+        # Calculate relative error for high polarization
+        high_rel_errors = []
+        for pred, true in zip(y_pred_high, y_test_high):
+            if abs(true) > 1e-10:
+                rel_error = abs(pred - true) / abs(true)
+                high_rel_errors.append(rel_error)
+        
+        high_mean_rel_error = np.mean(high_rel_errors) if high_rel_errors else 0
+        
+        print(f"\nHigh Polarization Model Performance:")
+        print(f"  MAE: {high_mae:.12f}")
+        print(f"  RMSE: {high_rmse:.12f}")
+        print(f"  R²: {high_r2:.12f}")
+        print(f"  Mean Relative Error: {high_mean_rel_error:.8f}")
+        
+        # Plot performance for high polarization model
+        plot_enhanced_performance_metrics(y_test_high, y_pred_high, snr_test_high, 
+                                         performance_dir, f"{version}_high_polarization")
+        plot_enhanced_results(y_test_high, y_pred_high, 
+                             performance_dir, f"{version}_high_polarization")
+
     # Create a function to save a figure with training metrics
     def plot_combined_training_history():
         fig, axs = plt.subplots(2, 2, figsize=(16, 12))
         
-        # Plot classifier accuracy and AUC
-        axs[0, 0].plot(classifier_history.history['accuracy'])
-        axs[0, 0].plot(classifier_history.history['val_accuracy'])
-        axs[0, 0].plot(classifier_history.history['auc'])
-        axs[0, 0].plot(classifier_history.history['val_auc'])
-        axs[0, 0].set_title('Classifier Model Performance')
-        axs[0, 0].set_ylabel('Metric Value')
-        axs[0, 0].set_xlabel('Epoch')
-        axs[0, 0].legend(['train_acc', 'val_acc', 'train_auc', 'val_auc'], loc='upper left')
+        # Plot XGBoost feature importance
+        xgb.plot_importance(xgb_classifier, ax=axs[0, 0], max_num_features=10)
+        axs[0, 0].set_title('XGBoost Feature Importance')
         
-        # Plot classifier loss
-        axs[0, 1].plot(classifier_history.history['loss'])
-        axs[0, 1].plot(classifier_history.history['val_loss'])
-        axs[0, 1].set_title('Classifier Model Loss')
-        axs[0, 1].set_ylabel('Loss')
-        axs[0, 1].set_xlabel('Epoch')
-        axs[0, 1].legend(['train', 'val'], loc='upper left')
+        # Plot confusion matrix
+        cm = confusion_matrix(y_test_class.flatten(), test_class_binary)
+        disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=['High P', 'Low P'])
+        disp.plot(ax=axs[0, 1], cmap='Blues', values_format='d')
+        axs[0, 1].set_title('Classifier Confusion Matrix')
         
         # Plot regression model MAE
         axs[1, 0].plot(low_reg_history.history['mae'])
@@ -729,37 +655,27 @@ if __name__ == "__main__":
     # Plot training history
     plot_combined_training_history()
     
-    # Create a confusion matrix for the classifier
-    def plot_classifier_confusion_matrix():
-        from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, classification_report
-        
-        # Convert predictions to binary
-        test_class_pred_binary = (test_class_pred > 0.5).astype(int)
-        y_test_class_binary = y_test_class.astype(int)
-        
-        # Calculate confusion matrix
-        cm = confusion_matrix(y_test_class_binary, test_class_pred_binary)
-        
-        # Generate classification report
-        report = classification_report(y_test_class_binary, test_class_pred_binary, 
-                                     target_names=['High P', 'Low P'])
-        print("Classification Report:")
-        print(report)
-        
-        # Plot confusion matrix
-        fig, ax = plt.subplots(figsize=(8, 8))
-        disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=['High P', 'Low P'])
-        disp.plot(ax=ax, cmap='Blues', values_format='.4g')
-        plt.title('Classifier Confusion Matrix')
-        plt.savefig(f"{performance_dir}/classifier_confusion_matrix.png")
-        plt.close()
-        
-        # Save report to file
-        with open(f"{performance_dir}/classification_report.txt", 'w') as f:
-            f.write(report)
+    # Save classification report
+    report = classification_report(y_test_class.flatten(), test_class_binary, 
+                                 target_names=['High P', 'Low P'])
+    print("Classification Report:")
+    print(report)
     
-    # Plot classifier confusion matrix
-    plot_classifier_confusion_matrix()
+    # Save report to file
+    with open(f"{performance_dir}/classification_report.txt", 'w') as f:
+        f.write(report)
+    
+    # Save test results to CSV
+    results_df = pd.DataFrame({
+        'Actual': y_test.flatten(),
+        'Predicted': test_pred.flatten(),
+        'Residuals': (y_test - test_pred).flatten(),
+        'Relative_Error': np.array(precision_errors) if precision_errors else np.zeros(len(y_test)),
+        'Class_Actual': y_test_class.flatten(),
+        'Class_Predicted': test_class_binary,
+        'Class_Probability': test_class_pred_proba
+    })
+    results_df.to_csv(f"{performance_dir}/test_results.csv", index=False)
     
     # Print completion message with summary
     print("\nTraining and evaluation complete.")

@@ -1,0 +1,18 @@
+{
+    "num_layers": 2,
+    "units_0": 32,
+    "activation": "swish",
+    "dropout_0": 0.35,
+    "l2_reg": 0.0002743043478381547,
+    "units_1": 32,
+    "dropout_1": 0.15000000000000002,
+    "learning_rate": 1.522116058828287e-05,
+    "units_2": 64,
+    "dropout_2": 0.2,
+    "units_3": 512,
+    "dropout_3": 0.30000000000000004,
+    "units_4": 512,
+    "dropout_4": 0.2,
+    "units_5": 32,
+    "dropout_5": 0.35
+}

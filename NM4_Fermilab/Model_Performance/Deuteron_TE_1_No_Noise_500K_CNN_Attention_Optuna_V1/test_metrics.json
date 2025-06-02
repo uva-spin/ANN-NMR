@@ -1,8 +1,0 @@
-{
-    "test_loss": 0.00017220142763108015,
-    "test_classifier_loss": 0.0003478896978776902,
-    "test_P_output_loss": 6.786796802771278e-06,
-    "test_classifier_accuracy": 0.0026885620318353176,
-    "test_P_output_mae": 1.3632869922730606e-05,
-    "test_P_output_mse": 0.9998999834060669
-}

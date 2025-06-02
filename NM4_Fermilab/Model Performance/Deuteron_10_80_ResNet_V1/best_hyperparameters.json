@@ -1,8 +1,0 @@
-{
-    "num_blocks": 2,
-    "units": 512,
-    "activation": "relu",
-    "dropout_rate": 0.4,
-    "optimizer": "nadam",
-    "learning_rate": 0.0002557125884013172
-}
