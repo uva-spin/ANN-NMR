@@ -32,5 +32,5 @@ baseline = Baseline(x_freq, U, Cknob, eta, shift, Cstray, phi_deg, 0)
 
 signal, Iplus, Iminus = GenerateTensorLineshape(x, P, phi_deg)
 
-plt.plot(x, signal)
+plt.plot(x, signal/100 + baseline)
 plt.show()

@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import FormatStrFormatter
 import matplotlib.font_manager as font_manager
 from scipy.signal import hilbert
+from Lineshape import *
 
 # --- System and lineshape setup ---
 g = 0.05
@@ -58,15 +59,30 @@ fig = plt.figure(figsize=(16, 16))
 ax = fig.add_subplot(1, 1, 1)
 
 # --- Generate and plot signals for different phase values ---
-phi_values = np.linspace(0, 360, 1000)  # 36 values from 0 to 360 degrees
+phi_values = np.linspace(0, 360, 500)  # 36 values from 0 to 360 degrees
+P_values = np.linspace(0, 1, 500)
 
-for i, phi_deg in enumerate(phi_values):
+U = 2.4283
+eta = 1.04e-2
+# self.phi = 6.1319
+Cstray = 10**(-20)
+shift = 0
+Cknob = 0.220
+cable = 6/2
+center_freq = 32.32
+
+noise = np.random.normal(0, 0.1, len(xvals))
+
+for i, phi_deg, P in enumerate(phi_values, P_values):
     phi_rad = np.deg2rad(phi_deg)
     
     # Phase-sensitive linear combination
     signal1 = r * (yvals_absorp1 * np.sin(phi_rad) + yvals_disp1 * np.cos(phi_rad))
     signal2 = yvals_absorp2 * np.sin(phi_rad) + yvals_disp2 * np.cos(phi_rad)
-    total_signal = signal1 + signal2
+
+    baseline = Baseline(xvals, U, Cknob, eta, shift, Cstray, phi_deg, 0)
+
+    total_signal = signal1 + signal2 + baseline + noise
     
     # Use a colormap to create a gradient of colors
     color = plt.cm.plasma(i / len(phi_values))
@@ -157,8 +173,9 @@ def create_signal_heatmap(signal1, signal2, xvals, phi_values):
     imag_part = np.zeros_like(Z1)
     for i, phi_deg in enumerate(phi_values):
         phi_rad = np.deg2rad(phi_deg)
-        real_part[i, :] = (r *yvals_disp1 + yvals_disp2 ) * np.cos(phi_rad)
-        imag_part[i, :] = (r * yvals_absorp1 + yvals_absorp2) * np.sin(phi_rad)
+        baseline = Baseline(xvals, U, Cknob, eta, shift, Cstray, phi_deg, 0)
+        real_part[i, :] = (r *yvals_disp1 + yvals_disp2 ) * np.cos(phi_rad) + baseline + noise
+        imag_part[i, :] = (r * yvals_absorp1 + yvals_absorp2) * np.sin(phi_rad) + baseline + noise
     
     # --- Real vs Imag, colored by phase ---
     # For each R (column), plot a line/points in (imag, real) space, colored by phase
@@ -200,7 +217,9 @@ for i, phi_deg in enumerate(phi_values):
     # Phase-sensitive linear combination
     signal1 = r * (yvals_absorp1 * np.sin(phi_rad) + yvals_disp1 * np.cos(phi_rad))
     signal2 = yvals_absorp2 * np.sin(phi_rad) + yvals_disp2 * np.cos(phi_rad)
-    signal_heatmap[i, :] = signal1 + signal2
+    baseline = Baseline(xvals, U, Cknob, eta, shift, Cstray, phi_deg, 0)
+
+    signal_heatmap[i, :] = signal1 + signal2 + baseline + noise
 
 # Create heatmap
 plt.figure(figsize=(16, 10))
@@ -236,12 +255,13 @@ imag_signal = np.zeros((len(phi_values), len(xvals)))
 
 for i, phi_deg in enumerate(phi_values):
     phi_rad = np.deg2rad(phi_deg)
-    
+    baseline = Baseline(xvals, U, Cknob, eta, shift, Cstray, phi_deg, 0)
     # Real component (cosine terms)
-    real_signal[i, :] = r * yvals_disp1 * np.cos(phi_rad) + yvals_disp2 * np.cos(phi_rad)
-    
+    real_signal[i, :] = r * yvals_disp1 * np.cos(phi_rad) + yvals_disp2 * np.cos(phi_rad) + baseline + noise
     # Imaginary component (sine terms)
-    imag_signal[i, :] = r * yvals_absorp1 * np.sin(phi_rad) + yvals_absorp2 * np.sin(phi_rad)
+    imag_signal[i, :] = r * yvals_absorp1 * np.sin(phi_rad) + yvals_absorp2 * np.sin(phi_rad) + baseline + noise
+
+
 
 
 # Create heatmap
