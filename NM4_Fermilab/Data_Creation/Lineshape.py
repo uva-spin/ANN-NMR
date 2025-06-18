@@ -4,7 +4,8 @@ import sys
 import os
 import tensorflow as tf
 from scipy.signal import hilbert
-from Variables import *
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from Custom_Scripts.Variables import *
 
 def FrequencyBound(f):
     # Define the domain to fit (bins 100 to 400)
@@ -537,6 +538,7 @@ def BaselineTensor(f, U, Cknob, eta, trim, Cstray, phi_const, DC_offset):
     
     return offset + DC_offset
 
+
 def Lineshape(x,eps):
     def cosal(x, eps):
         return (1 - eps * x - s) / bigxsquare(x, eps)
@@ -606,6 +608,8 @@ def GenerateTensorLineshape(x, P, phi_deg):
     g = 0.05
     s = 0.04
     bigy = np.sqrt(3 - s)
+
+    # x = (x - 32.68) / 0.6
     
     # Calculate r from P
     r = (np.sqrt(4 - 3 * P**2) + P) / (2 - 2 * P)
@@ -649,13 +653,14 @@ def SamplingVectorLineshape(P, x, bound):
     signal, _, _ = GenerateVectorLineshape(P,x)
     return signal
 
-def SamplingTensorLineshape(P, x, bound):
+def SamplingTensorLineshape(P, x, bound, phi=0):
     """Sampling the lineshape with a stochastic shift to frequency bins.
 
     Args:
         P (float): Polarization
         x (list): Frequency range
         bound (float): Bound of the shift
+        phi (float): Phase angle in degrees
 
     Returns:
         signal (list): Generated lineshape with a stochastic shift
@@ -663,7 +668,7 @@ def SamplingTensorLineshape(P, x, bound):
     shift = np.full(len(x),np.random.uniform( -bound , bound))
     x += shift
     ### Generate the lineshape with the shifted 
-    signal, _ , _  = GenerateTensorLineshape(x, P, 0)
+    signal, _, _ = GenerateTensorLineshape(x, P, phi)
     return signal
 
 def GenerateLineshapeTensor(P, x): ### Working now
@@ -744,6 +749,8 @@ def GenerateLineshapeTensor(P, x): ### Working now
 
 def Baseline_Polynomial_Curve(w):
     return -1.84153246e-07*w**2 + 8.42855076e-05*w - 1.11342243e-04
+
+
 
 
 

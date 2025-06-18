@@ -309,6 +309,7 @@ def Baseline(f, U, Cknob, eta, trim, Cstray, phi_const, DC_offset):
         return phi_trim(w) + phi_const
 
     def V_out(w):
+
         return -1 * (I * Ztotal(w) * np.exp(im_unit * phi(w) * pi / 180))
 
     out_y = V_out(w)
@@ -515,10 +516,7 @@ def BaselineTensor(f, U, Cknob, eta, trim, Cstray, phi_const, DC_offset):
         I_complex = tf.cast(I, tf.complex64)
         neg_one = tf.cast(-1.0, tf.complex64)
         
-        # Phase calculation in radians
-        phi_value = tf.math.real(phi(w))
-        pi_float = tf.cast(pi, tf.float32)
-        phi_radians = phi_value * pi_float / 180.0
+        phi_radians = phi(w)
         
         # Complex exponential for phase
         cos_phi = tf.math.cos(phi_radians)
@@ -628,6 +626,8 @@ def GenerateTensorLineshape(x, P, phi_deg):
     Iminus = yvals_absorp2 * np.sin(phi_rad) + yvals_disp2 * np.cos(phi_rad)
 
     signal = Iplus + Iminus
+
+    
     
     # Return total signal
     return signal, Iplus, Iminus
