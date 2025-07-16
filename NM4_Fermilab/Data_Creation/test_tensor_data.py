@@ -44,6 +44,8 @@ def load_tensor_data(file_path):
         
         print(f"Debug - Signal shape after reshape: {signals.shape}")
         print(f"Debug - Sample signal range: [{signals[0].min():.6f}, {signals[0].max():.6f}]")
+
+        print(f"Number of events: {len(signals)}")
         
         return signals, P_values, SNR_values, metadata
     else:

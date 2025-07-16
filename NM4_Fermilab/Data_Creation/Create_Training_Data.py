@@ -7,6 +7,7 @@ import pandas as pd
 import logging
 from scipy.signal import hilbert
 from Lineshape import *
+import tqdm as tqdm
 
 class SignalGenerator:
     """
@@ -103,11 +104,15 @@ class SignalGenerator:
         self.shifting = shifting
         self.bound = bound
         
-        # Define phi values for tensor polarization (500 phase angles from 0 to 360 degrees)
+        # Define phi values for tensor polarization (500 phase angles from 0 to 180 degrees)
         if self.polarization_type == "tensor":
             self.phi_values = np.linspace(0, 180, 500)
+            # Pre-compute sin and cos values for all phi angles
+            self.phi_rad = np.deg2rad(self.phi_values)
+            self.sin_phi = np.sin(self.phi_rad)
+            self.cos_phi = np.cos(self.phi_rad)
         else:
-            self.phi = 6.1319
+            self.phi = 2 * np.pi  # 2π for vector polarization (constant, no variation)
         
         # Mode-specific default parameters
         if self.mode == "deuteron":
@@ -126,6 +131,10 @@ class SignalGenerator:
         self.s = 0.04
         self.bigy = np.sqrt(3 - self.s)
         
+        # Cache for pre-computed values (for tensor optimization)
+        self._lineshape_cache = None
+        self._baseline_cache = None
+        
         os.makedirs(self.output_dir, exist_ok=True)
         
         logging.basicConfig(
@@ -133,6 +142,38 @@ class SignalGenerator:
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
         )
         self.logger = logging.getLogger("SignalGenerator")
+    
+    def _precompute_tensor_components(self):
+        """Pre-compute and cache tensor signal components that are independent of P.
+        Note: This is only used for tensor polarization. Vector polarization uses a constant phi."""
+        if self._lineshape_cache is None:
+            X = np.linspace(-3, 3, 500)
+            
+            # Pre-compute the base lineshapes for eps=1 and eps=-1
+            yvals_absorp1 = Lineshape(X, 1)        # χ''₊
+            yvals_absorp2 = Lineshape(-X, 1)       # χ''₋
+            
+            # Pre-compute dispersive signals using Hilbert transform
+            yvals_disp1 = np.imag(hilbert(yvals_absorp1))  # χ'₊
+            yvals_disp2 = np.imag(hilbert(yvals_absorp2))  # χ'₋
+            
+            self._lineshape_cache = {
+                'X': X,
+                'yvals_absorp1': yvals_absorp1,
+                'yvals_absorp2': yvals_absorp2,
+                'yvals_disp1': yvals_disp1,
+                'yvals_disp2': yvals_disp2
+            }
+            
+            # Pre-compute baseline for all phi angles if needed
+            if self.baseline:
+                baseline_all_phi = np.zeros((500, 500))  # (frequency, phi)
+                for i, phi_deg in enumerate(self.phi_values):
+                    baseline_all_phi[:, i] = Baseline(X, self.U, self.Cknob, self.eta, self.cable, 
+                                                     self.Cstray, phi_deg, self.shift)
+                self._baseline_cache = baseline_all_phi
+            else:
+                self._baseline_cache = np.zeros((500, 500))
     
     def _tensor_signal_functions(self, x, eps):
         """Helper functions for tensor signal generation (from your second script)"""
@@ -178,35 +219,138 @@ class SignalGenerator:
         
         return Voigt(x, amp, sig, gam, center), None
 
-    def _generate_deuteron_signal(self, P):
-        """Generate deuteron signal for both vector and tensor polarizations"""
-        X = np.linspace(-3, 3, 500)  
+    def _generate_deuteron_signal_batch_optimized(self, P_values):
+        """Batch-optimized deuteron signal generation for tensor polarization"""
+        # Ensure tensor components are pre-computed
+        if self.polarization_type == "tensor":
+            self._precompute_tensor_components()
+        
+        num_samples = len(P_values)
         
         if self.polarization_type == "tensor":
-
-            signals = np.zeros((500, 500))
+            # Use cached values
+            X = self._lineshape_cache['X']
+            yvals_absorp1 = self._lineshape_cache['yvals_absorp1']
+            yvals_absorp2 = self._lineshape_cache['yvals_absorp2']
+            yvals_disp1 = self._lineshape_cache['yvals_disp1']
+            yvals_disp2 = self._lineshape_cache['yvals_disp2']
+            baseline_ref = self._baseline_cache
             
-            # Generate signal for each phase angle
-            for i, phi_deg in enumerate(self.phi_values):
-                phi_rad = np.deg2rad(phi_deg)
-
-                if self.shifting:
-                    signal= SamplingTensorLineshape(P, X, self.bound)
-                else:
-                    signal, _, _ = GenerateTensorLineshape(X, P, phi_deg)
+            # Calculate r for all P values at once
+            r_values = (np.sqrt(4 - 3 * P_values**2) + P_values) / (2 - 2 * P_values)
+            
+            # Initialize output array: (num_samples, 500, 500)
+            all_signals = np.zeros((num_samples, 500, 500))
+            
+            # Process samples in batches for memory efficiency
+            batch_size = min(50, num_samples)  # Process 50 samples at a time
+            
+            for batch_start in range(0, num_samples, batch_size):
+                batch_end = min(batch_start + batch_size, num_samples)
+                batch_r = r_values[batch_start:batch_end]
                 
+                # Reshape for broadcasting: (batch_size, 500, 1) for frequency dimension
+                # and (1, 500) for phi dimension
+                yvals_absorp1_3d = yvals_absorp1[np.newaxis, :, np.newaxis]  # Shape: (1, 500, 1)
+                yvals_absorp2_3d = yvals_absorp2[np.newaxis, :, np.newaxis]  # Shape: (1, 500, 1)
+                yvals_disp1_3d = yvals_disp1[np.newaxis, :, np.newaxis]      # Shape: (1, 500, 1)
+                yvals_disp2_3d = yvals_disp2[np.newaxis, :, np.newaxis]      # Shape: (1, 500, 1)
+                
+                sin_phi_2d = self.sin_phi[np.newaxis, np.newaxis, :]         # Shape: (1, 1, 500)
+                cos_phi_2d = self.cos_phi[np.newaxis, np.newaxis, :]         # Shape: (1, 1, 500)
+                
+                # Reshape r for broadcasting: (batch_size, 1, 1)
+                r_3d = batch_r[:, np.newaxis, np.newaxis]
+                
+                # Compute all samples and phi angles simultaneously using broadcasting
+                # Result shapes: (batch_size, 500, 500)
+                Iplus = r_3d * (yvals_absorp1_3d * sin_phi_2d + yvals_disp1_3d * cos_phi_2d)
+                Iminus = yvals_absorp2_3d * sin_phi_2d + yvals_disp2_3d * cos_phi_2d
+                
+                signal = Iplus + Iminus
+                
+                # Add baseline if required
+                if self.baseline:
+                    # baseline_ref is (500, 500) - broadcast to (batch_size, 500, 500) for all samples
+                    baseline_3d = baseline_ref[np.newaxis, :, :]  # Shape: (1, 500, 500)
+                    total_signal = signal / self.scale_factor + baseline_3d
+                else:
+                    total_signal = signal / self.scale_factor
+                
+                all_signals[batch_start:batch_end] = total_signal
+            
+            return all_signals
+            
+        else:  # vector polarization - fall back to individual processing
+            # Use the original coordinate system for vector polarization
+            X = np.linspace(30.88, 34.48, 500)  # Original frequency range in MHz
+            signals = []
+            for P in P_values:
+                if self.shifting:
+                    signal = SamplingVectorLineshape(P, X, self.bound) / self.scale_factor
+                else:
+                    result = GenerateVectorLineshape(P, X)
+                    signal, _, _ = result
+                    signal = signal / self.scale_factor
+                
+                # Add baseline if required for vector polarization (uses constant phi = 2π)
                 if self.baseline:
                     baseline = Baseline(X, self.U, self.Cknob, self.eta, self.cable, 
-                                      self.Cstray, phi_deg, self.shift)
-                    total_signal = (signal) / self.scale_factor + baseline
-                else:
-                    total_signal = (signal) / self.scale_factor
+                                      self.Cstray, self.phi, self.shift)
+                    signal = signal + baseline
                 
-                signals[:, i] = total_signal
+                signals.append(signal)
             
-            return signals
+            return np.array(signals)
+
+    def _generate_deuteron_signal_optimized(self, P):
+        """Optimized deuteron signal generation for tensor polarization"""
+        # Ensure tensor components are pre-computed
+        if self.polarization_type == "tensor":
+            self._precompute_tensor_components()
+        
+        if self.polarization_type == "tensor":
+            # Use cached values
+            X = self._lineshape_cache['X']
+            yvals_absorp1 = self._lineshape_cache['yvals_absorp1']
+            yvals_absorp2 = self._lineshape_cache['yvals_absorp2']
+            yvals_disp1 = self._lineshape_cache['yvals_disp1']
+            yvals_disp2 = self._lineshape_cache['yvals_disp2']
+            baseline_ref = self._baseline_cache
+            
+            # Calculate r from P (only once)
+            r = (np.sqrt(4 - 3 * P**2) + P) / (2 - 2 * P)
+            
+            # Fully vectorized computation using broadcasting
+            # Reshape arrays for broadcasting: (500,) -> (500, 1) for frequency dimension
+            # and (500,) -> (1, 500) for phi dimension
+            yvals_absorp1_2d = yvals_absorp1[:, np.newaxis]  # Shape: (500, 1)
+            yvals_absorp2_2d = yvals_absorp2[:, np.newaxis]  # Shape: (500, 1)
+            yvals_disp1_2d = yvals_disp1[:, np.newaxis]      # Shape: (500, 1)
+            yvals_disp2_2d = yvals_disp2[:, np.newaxis]      # Shape: (500, 1)
+            
+            sin_phi_2d = self.sin_phi[np.newaxis, :]         # Shape: (1, 500)
+            cos_phi_2d = self.cos_phi[np.newaxis, :]         # Shape: (1, 500)
+            
+            # Compute all phi angles simultaneously using broadcasting
+            # Result shapes: (500, 500) where first dim is frequency, second is phi
+            Iplus = r * (yvals_absorp1_2d * sin_phi_2d + yvals_disp1_2d * cos_phi_2d)
+            Iminus = yvals_absorp2_2d * sin_phi_2d + yvals_disp2_2d * cos_phi_2d
+            
+            signal = Iplus + Iminus
+            
+            # Add baseline if required
+            if self.baseline:
+                # baseline_ref is now (500, 500) - use directly
+                total_signal = signal / self.scale_factor + baseline_ref
+            else:
+                total_signal = signal / self.scale_factor
+            
+            return total_signal
             
         else:  # vector polarization
+            X = np.linspace(-3, 3, 500)  # Define X for vector polarization
+            
             if self.shifting:
                 signal = SamplingVectorLineshape(P, X, self.bound) / self.scale_factor
             else:
@@ -219,6 +363,32 @@ class SignalGenerator:
                 baseline = Baseline(X, self.U, self.Cknob, self.eta, self.cable, 
                                   self.Cstray, self.phi, self.shift)
                 signal = (signal) / self.scale_factor + baseline
+            
+            return signal
+
+    def _generate_deuteron_signal(self, P):
+        """Generate deuteron signal for both vector and tensor polarizations"""
+        # Use optimized version for tensor polarization
+        if self.polarization_type == "tensor":
+            return self._generate_deuteron_signal_optimized(P)
+        
+        elif self.polarization_type == "vector":
+            # Vector polarization implementation
+            # Use the original coordinate system for vector polarization
+            X = np.linspace(30.88, 34.48, 500)  # Original frequency range in MHz
+            
+            if self.shifting:
+                signal = SamplingVectorLineshape(P, X, self.bound) / self.scale_factor
+            else:
+                result = GenerateVectorLineshape(P, X)
+                signal, _, _ = result
+                signal = signal / self.scale_factor
+            
+            # Add baseline if required for vector polarization (uses constant phi = 2π)
+            if self.baseline:
+                baseline = Baseline(X, self.U, self.Cknob, self.eta, self.cable, 
+                                  self.Cstray, self.phi, self.shift)
+                signal = signal + baseline
             
             return signal
     
@@ -269,17 +439,18 @@ class SignalGenerator:
             self.logger.info(f"Uniformly creating data between {self.lower_bound} and {self.upper_bound}")
             P_values = np.random.uniform(self.lower_bound, self.upper_bound, self.num_samples)
         
-        for i, P in enumerate(P_values):
-            if self.mode == "deuteron":
-                signal = self._generate_deuteron_signal(P)
-            else:  # proton mode
-                x = np.linspace(-3, 3, 500)  # Use same range for consistency
-                signal, _ = self._generate_proton_signal(x)
+        # Use batch processing for tensor polarization
+        if self.polarization_type == "tensor" and self.mode == "deuteron":
+            self.logger.info("Using batch processing for tensor polarization...")
             
-            # Add noise if required
-            noisy_signal, noise = self._add_noise_to_signal(signal)
+            # Generate all signals in batch
+            all_signals = self._generate_deuteron_signal_batch_optimized(P_values)
             
-            if self.polarization_type == "tensor":
+            # Process each signal
+            for i, (P, signal) in enumerate(zip(P_values, all_signals)):
+                # Add noise if required
+                noisy_signal, noise = self._add_noise_to_signal(signal)
+                
                 # For tensor: signal is (500, 500) -> reshape to (500, 500, 1)
                 final_signal = noisy_signal.reshape(500, 500, 1)
                 signal_arr.append(final_signal)
@@ -292,21 +463,50 @@ class SignalGenerator:
                     snr_arr.append(snr)
                 else:
                     snr_arr.append(None)
-            else:
-                # For vector: signal is (500,) -> keep as is
-                signal_arr.append(noisy_signal)
                 
-                # Calculate SNR for vector signals
-                if noise is not None:
-                    signal_power = np.mean(signal**2)
-                    noise_power = np.mean(noise**2)
-                    snr = 10 * np.log10(signal_power / noise_power) if noise_power > 0 else float('inf')
-                    snr_arr.append(snr)
+                if (i + 1) % 100 == 0:
+                    self.logger.info(f"Processed {i + 1}/{len(P_values)} samples")
+        
+        else:
+            # Original processing for vector polarization or proton mode
+            for i, P in tqdm.tqdm(enumerate(P_values), total=len(P_values), desc="Generating samples"):
+                if self.mode == "deuteron":
+                    signal = self._generate_deuteron_signal(P)
+                else:  # proton mode
+                    x = np.linspace(-3, 3, 500)  # Use same range for consistency
+                    signal, _ = self._generate_proton_signal(x)
+                
+                # Add noise if required
+                noisy_signal, noise = self._add_noise_to_signal(signal)
+                
+                if self.polarization_type == "tensor":
+                    # For tensor: signal is (500, 500) -> reshape to (500, 500, 1)
+                    final_signal = noisy_signal.reshape(500, 500, 1)
+                    signal_arr.append(final_signal)
+                    
+                    # Calculate SNR for tensor signals
+                    if noise is not None:
+                        signal_power = np.mean(signal**2)
+                        noise_power = np.mean(noise**2)
+                        snr = 10 * np.log10(signal_power / noise_power) if noise_power > 0 else float('inf')
+                        snr_arr.append(snr)
+                    else:
+                        snr_arr.append(None)
                 else:
-                    snr_arr.append(None)
-            
-            if (i + 1) % 100 == 0:
-                self.logger.info(f"Generated {i + 1}/{len(P_values)} samples")
+                    # For vector: signal is (500,) -> keep as is
+                    signal_arr.append(noisy_signal)
+                    
+                    # Calculate SNR for vector signals
+                    if noise is not None:
+                        signal_power = np.mean(signal**2)
+                        noise_power = np.mean(noise**2)
+                        snr = 10 * np.log10(signal_power / noise_power) if noise_power > 0 else float('inf')
+                        snr_arr.append(snr)
+                    else:
+                        snr_arr.append(None)
+                
+                if (i + 1) % 100 == 0:
+                    self.logger.info(f"Generated {i + 1}/{len(P_values)} samples")
         
         # Create DataFrame
         if self.polarization_type == "tensor":
@@ -345,7 +545,7 @@ class SignalGenerator:
                 'phi_bins': 500 if self.polarization_type == "tensor" else 1,
                 'signal_shape': (500, 500, 1) if self.polarization_type == "tensor" else (500,),
                 'is_flattened': True if self.polarization_type == "tensor" else False,
-                'frequency_range': (-3, 3),  # Updated to match your second script
+                'frequency_range': (30.88, 34.48) if self.polarization_type == "vector" else (-3, 3),
                 'phi_range': (0, 180) if self.polarization_type == "tensor" else None,
                 'num_samples': len(P_values)
             }
