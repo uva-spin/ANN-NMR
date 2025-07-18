@@ -41,3 +41,7 @@ After training a model, you will want to test how it will predict against the tr
 *sbatch Predict.slurm \<version of model (ex. V2)\> \<training data\>* 
 
 
+
+BING BONG 
+
+
